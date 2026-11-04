@@ -334,16 +334,9 @@ public class CMReviewWordGenerator : ICMReviewWordGenerator
             }
             else
             {
-                var hasSpecificNow = documentModel.ChangeCategories.Any(c => c.HasChanges &&
-                    (c.CategoryName.Contains("Standard",      StringComparison.OrdinalIgnoreCase) ||
-                     c.CategoryName.Contains("Change Request",StringComparison.OrdinalIgnoreCase) ||
-                     c.CategoryName.Contains("Normal",        StringComparison.OrdinalIgnoreCase)));
-
-                uatText = hasSpecificNow
+                uatText = hasAnyChanges
                     ? $"UAT was conducted of the above changes as per Banglalink change management policy for the month of {monthStr}-{documentModel.ReportingYear}."
-                    : !hasAnyChanges
-                        ? $"There was No UAT conducted in {documentModel.Application} for the month of {monthStr}-{documentModel.ReportingYear}, as there was No change."
-                        : $"There was No UAT conducted in {documentModel.Application} for the month of {monthStr}-{documentModel.ReportingYear}.";
+                    : $"There was No UAT conducted in {documentModel.Application} for the month of {monthStr}-{documentModel.ReportingYear}, as there was No change.";
             }
             body.AppendChild(IndentedPara(IndentOne, uatText, bold: false, fontSize: SzBody));
             body.AppendChild(Blank());
@@ -352,12 +345,6 @@ public class CMReviewWordGenerator : ICMReviewWordGenerator
             // ════════════════════════════════════════════════════════════════
             // REGISTERED CHANGES / SUMMARY  (dynamic number)
             // ════════════════════════════════════════════════════════════════
-            var hasSpecificChanges = documentModel.ChangeCategories.Any(c => c.HasChanges &&
-                (c.CategoryName.Contains("Standard",      StringComparison.OrdinalIgnoreCase) ||
-                 c.CategoryName.Contains("Change Request",StringComparison.OrdinalIgnoreCase) ||
-                 c.CategoryName.Contains("Normal",        StringComparison.OrdinalIgnoreCase) ||
-                 documentModel.Application == "Techvan"));
-
             var hasFigure2 = documentModel.ExcelScreenshot != null &&
                              (!string.IsNullOrWhiteSpace(documentModel.ExcelScreenshot.Base64Data) ||
                               !string.IsNullOrWhiteSpace(documentModel.ExcelScreenshot.StorageReference));
@@ -384,7 +371,7 @@ public class CMReviewWordGenerator : ICMReviewWordGenerator
                 if (totalCount == 0) totalCount = documentModel.WOReportItems.Count;
                 var countWrd    = ToWord(totalCount);
                 var changePlural = totalCount == 1 ? "change was" : "changes were";
-                var figureRef   = hasSpecificChanges && hasFigure2
+                var figureRef   = hasFigure2
                     ? "(figure 1) & (figure 2)"
                     : "(figure 1)";
 
@@ -405,7 +392,7 @@ public class CMReviewWordGenerator : ICMReviewWordGenerator
             }
 
             // Figure 2 – Excel dump screenshot
-            if (hasSpecificChanges && hasFigure2)
+            if (hasAnyChanges && hasFigure2)
             {
                 EmbedScreenshot(mainPart, body, documentModel.ExcelScreenshot!);
                 body.AppendChild(MakePara("Figure-2", bold: true, fontSize: SzBody, center: true, underline: true));
@@ -464,7 +451,7 @@ public class CMReviewWordGenerator : ICMReviewWordGenerator
 
                 var csumPara = new Paragraph();
                 csumPara.AppendChild(SpacedProps(spaceAfter: 200));
-                if (hasSpecificChanges)
+                if (hasAnyChanges)
                     csumPara.AppendChild(Run($"{countWrd} {changePlural} made to the {documentModel.Application} System for the month of {monthStr}-{documentModel.ReportingYear}. ", SzBody));
                 else
                     csumPara.AppendChild(Run($"No change was made to the {documentModel.Application} System for the month of {monthStr}-{documentModel.ReportingYear}. ", SzBody));

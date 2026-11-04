@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddScoped<WO_CM_Review_Automation.Application.Interfaces.IImageStorageService, WO_CM_Review_Automation.Infrastructure.Services.CMReview.ImageStorageService>();
         services.AddScoped<WO_CM_Review_Automation.Application.Interfaces.ICMReviewWOReportService, WO_CM_Review_Automation.Infrastructure.Services.CMReview.CMReviewWOReportService>();
         services.AddScoped<WO_CM_Review_Automation.Application.Interfaces.ICMReviewWordGenerator, WO_CM_Review_Automation.Infrastructure.Services.CMReview.CMReviewWordGenerator>();
+        services.AddScoped<WO_CM_Review_Automation.Application.Interfaces.ICMReviewEvidenceImageGenerator, WO_CM_Review_Automation.Infrastructure.Services.CMReview.CMReviewEvidenceImageGenerator>();
 
 
         services.AddScoped<WO_CM_Review_Automation.Application.Mappings.Interfaces.IMappingService, WO_CM_Review_Automation.Infrastructure.Services.Mappings.MappingService>();

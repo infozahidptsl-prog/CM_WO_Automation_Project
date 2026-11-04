@@ -1,7 +1,7 @@
 @using WO_CM_Review_Automation.Application.ViewModels.CMReview
 @using MudBlazor
 
-<div id="live-preview-content" class="preview-container pa-6" style="border: 1px solid #ccc; background: white; min-height: 800px; color: black; font-family: Arial, sans-serif;">
+<div id="live-preview-content" class="preview-container prep-paper-sheet" style="font-family: Arial, sans-serif;">
     @if (DocumentModel == null)
     {
         <MudText Align="Align.Center">No document loaded.</MudText>
@@ -10,50 +10,38 @@
     {
         var monthStr = System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(DocumentModel.ReportingMonth);
         var periodStr = $"{monthStr}'{DocumentModel.ReportingYear}";
-        var hasAnyChanges = DocumentModel.ChangeCategories.Any(c => c.HasChanges);
-        
-        var hasSpecificChanges = DocumentModel.ChangeCategories.Any(c => c.HasChanges && 
-            (c.CategoryName.Contains("Standard", StringComparison.OrdinalIgnoreCase) || 
-             c.CategoryName.Contains("Change Request", StringComparison.OrdinalIgnoreCase) || 
-             c.CategoryName.Contains("Normal", StringComparison.OrdinalIgnoreCase) ||
-             DocumentModel.Application == "Techvan"));
+        var hasAnyChanges = DocumentModel.ChangeCategories.Any(c => c.HasChanges) || DocumentModel.WOReportItems.Any();
         
         var hasFigure2 = DocumentModel.ExcelScreenshot != null && (!string.IsNullOrWhiteSpace(DocumentModel.ExcelScreenshot.Base64Data) || !string.IsNullOrWhiteSpace(DocumentModel.ExcelScreenshot.StorageReference));
 
 
-        <!-- Header Table Mockup -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div style="flex: 1;"></div>
-            <div style="flex: 1; text-align: center;">
-                <MudText Typo="Typo.body1" Style="color: blue;">Internal</MudText>
-            </div>
-            <div style="flex: 1; text-align: right;">
-                <img src="/logo.png" onerror="this.onerror=null;this.src='/favicon.png';" alt="Logo" style="max-height: 40px;" />
-            </div>
+        <!-- Header Strip: T15.02.b.1 on left, Internal on right -->
+        <div class="prep-doc-header-strip">
+            <span class="prep-doc-ref">T15.02.b.1 · Change Request Initiation &amp; Control</span>
+            <span class="prep-doc-class">Internal</span>
         </div>
 
         <!-- Title Block -->
-        <div style="border-bottom: 2px solid gray; margin-bottom: 2rem;">
-            <MudText Typo="Typo.subtitle1" Style="color: gray;">T15.02.b.1: Change Request Initiation & Control</MudText>
+        <div class="prep-doc-title-block">
+            <div class="prep-doc-main-title">Process for Change Management Review:</div>
+            <div class="prep-doc-sub-title">Registered Change vs. Implemented Change</div>
         </div>
 
-        <div style="margin-bottom: 2rem;">
-            <MudText Typo="Typo.h4" Style="font-weight: bold; margin-bottom: 0;">Process for Change Management Review:</MudText>
-            <MudText Typo="Typo.h4" Style="font-style: italic;">Registered Change vs. Implemented Change</MudText>
+        <p class="prep-doc-objective">
+            The objective of this artifact is to enable verification between Available Change Log and Registered Changes and to certify or identify presence of unauthorized changes.
+        </p>
+
+        <div class="prep-doc-meta-block">
+            <div class="prep-doc-system">Applicable System: @DocumentModel.Application</div>
+            <div class="prep-doc-period">Period: @periodStr</div>
         </div>
-
-        <MudText Typo="Typo.body1" Class="mb-4">The objective of this artifact is to enable verification between Available Change Log and Registered Changes and to certify or identify presence of unauthorized changes.</MudText>
-
-        <MudText Typo="Typo.h6" Style="font-weight: bold;">Applicable System: @DocumentModel.Application</MudText>
-        <MudText Typo="Typo.h6" Style="font-weight: bold; text-decoration: underline;" Class="mb-6">Period: @periodStr</MudText>
 
         <!-- Section A -->
-        <MudText Typo="Typo.h6" Style="font-weight: bold;">(A) Available Change Log at @DocumentModel.Application as per Change Management Scope</MudText>
-        <MudText Typo="Typo.h6" Style="font-weight: bold;" Class="mb-4">Latest Screenshot</MudText>
+        <div class="prep-doc-section-heading">(A) Available Change Log at @DocumentModel.Application as per Change Management Scope</div>
         
         @if (!hasAnyChanges)
         {
-            <MudText Typo="Typo.body1" Class="mb-4">As per the screenshot below, there was no change made in the @DocumentModel.Application system for the month of @monthStr-@DocumentModel.ReportingYear.</MudText>
+            <p class="prep-doc-body-p">As per the screenshot below, there was no change made in the @DocumentModel.Application system for the month of @monthStr-@DocumentModel.ReportingYear.</p>
         }
         else
         {
@@ -101,12 +89,12 @@
                         : changeParts[0];
                         
                     string wereOrWas = allCategoriesWithChanges.Sum(c => c.ChangeDetails.Count) == 1 ? "was" : "were";
-                    <MudText Typo="Typo.body1" Class="mb-4" Style="font-size: 1.25rem;">As per the screenshot below, @changesSummary @wereOrWas made in the @DocumentModel.Application system for the month of @periodStr.</MudText>
+                    <p class="prep-doc-body-p">As per the screenshot below, @changesSummary @wereOrWas made in the @DocumentModel.Application system for the month of @periodStr.</p>
             }
             else
             {
                 string changesText = DocumentModel.WOReportItems.Count == 1 ? "there was a change made" : "there were changes made";
-                <MudText Typo="Typo.body1" Class="mb-4" Style="font-size: 1.25rem;">As per the screenshot below, @changesText in the @DocumentModel.Application system for the month of @periodStr.</MudText>
+                <p class="prep-doc-body-p">As per the screenshot below, @changesText in the @DocumentModel.Application system for the month of @periodStr.</p>
             }
         }
 
@@ -198,7 +186,7 @@
         {
             int currentIndex = i;
             var cat = DocumentModel.ChangeCategories[currentIndex];
-            <MudText Typo="Typo.h6" Style="font-weight: bold;" Class="mt-4">@(currentIndex + 1). @cat.CategoryName</MudText>
+            <div class="prep-doc-cat-title">@(currentIndex + 1). @cat.CategoryName</div>
             @if (cat.HasChanges)
             {
                 var count = cat.ChangeDetails.Count;
@@ -232,18 +220,17 @@
                 var coNumbers = string.Join(", ", cat.ChangeDetails.Select(d => d.ChangeOrder.Replace("WO ", "", StringComparison.OrdinalIgnoreCase).Replace("WO", "", StringComparison.OrdinalIgnoreCase).Replace("CR ", "", StringComparison.OrdinalIgnoreCase).Replace("CR", "", StringComparison.OrdinalIgnoreCase).Trim()));
                 var coText = $"(WO {coNumbers})";
 
-                <MudText Typo="Typo.body1" Class="ml-4">@($"{countWord} {changeWord} made under this change category. Change order {numberWord}:")</MudText>
-                <MudText Typo="Typo.body1" Class="ml-4 mb-4">@coText</MudText>
+                <div class="prep-doc-cat-summary">@($"{countWord} {changeWord} made under this change category.")</div>
 
                 @foreach (var detail in cat.ChangeDetails)
                 {
                     string coNum = detail.ChangeOrder.Replace("WO ", "", StringComparison.OrdinalIgnoreCase).Replace("WO", "", StringComparison.OrdinalIgnoreCase).Replace("CR ", "", StringComparison.OrdinalIgnoreCase).Replace("CR", "", StringComparison.OrdinalIgnoreCase).Trim();
                     string scheduleDateStr = detail.ScheduleDate.HasValue ? detail.ScheduleDate.Value.ToString("dd-MM-yyyy hh:mm:ss tt") : "";
                     
-                    <div class="ml-4 mb-4">
-                        <MudText Typo="Typo.body1"><strong>Change Order: </strong>@coNum</MudText>
-                        <MudText Typo="Typo.body1"><strong>Change Description: </strong>@detail.Description</MudText>
-                        <MudText Typo="Typo.body1"><strong>Execution End Date: </strong>@scheduleDateStr</MudText>
+                    <div class="prep-doc-change-card">
+                        <div><strong>Change order:</strong> <span class="prep-doc-mono">@coNum</span></div>
+                        <div><strong>Description:</strong> @detail.Description</div>
+                        <div><strong>Execution end:</strong> <span class="prep-doc-mono">@scheduleDateStr</span></div>
                     </div>
                     
                     @if (detail.DeploymentScreenshots != null && detail.DeploymentScreenshots.Any())
@@ -317,39 +304,35 @@
             }
             else
             {
-                <MudText Typo="Typo.body1" Class="ml-4 mb-2">No change.</MudText>
+                <div class="prep-doc-no-change">No change.</div>
             }
         }
 
         <!-- UAT -->
-        <MudText Typo="Typo.h6" Style="font-weight: bold;" Class="mt-4">9. UAT</MudText>
+        <div class="prep-doc-cat-title">9. UAT</div>
         @if (string.IsNullOrWhiteSpace(DocumentModel.UATStatement))
         {
-            @if (hasSpecificChanges)
+            @if (hasAnyChanges)
             {
-                <MudText Typo="Typo.body1" Class="ml-4 mb-4">UAT was conducted of the above changes as per Banglalink change management policy for the month of @monthStr-@DocumentModel.ReportingYear.</MudText>
-            }
-            else if (!hasAnyChanges)
-            {
-                <MudText Typo="Typo.body1" Class="ml-4 mb-4">There was No UAT conducted in @DocumentModel.Application for the month of @monthStr-@DocumentModel.ReportingYear, as there was No change.</MudText>
+                <div class="prep-doc-cat-summary">UAT was conducted of the above changes as per Banglalink change management policy for the month of @monthStr-@DocumentModel.ReportingYear.</div>
             }
             else
             {
-                <MudText Typo="Typo.body1" Class="ml-4 mb-4">There was No UAT conducted in @DocumentModel.Application for the month of @monthStr-@DocumentModel.ReportingYear.</MudText>
+                <div class="prep-doc-no-change">There was No UAT conducted in @DocumentModel.Application for the month of @monthStr-@DocumentModel.ReportingYear, as there was No change.</div>
             }
         }
         else
         {
-            <MudText Typo="Typo.body1" Class="ml-4 mb-4">@DocumentModel.UATStatement</MudText>
+            <div class="prep-doc-cat-summary">@DocumentModel.UATStatement</div>
         }
 
         <!-- Section C -->
-        <MudText Typo="Typo.h6" Style="font-weight: bold;">10. Registered Changes, Change Management Report, @monthStr-@DocumentModel.ReportingYear.</MudText>
-        <MudText Typo="Typo.subtitle1" Style="font-weight: bold;" Class="mb-2">IT Change Orders Summary & Details, @monthStr- @DocumentModel.ReportingYear</MudText>
+        <div class="prep-doc-section-heading mt-4">10. Registered Changes, Change Management Report, @monthStr-@DocumentModel.ReportingYear.</div>
+        <div class="prep-doc-sub-heading">IT Change Orders Summary &amp; Details, @monthStr- @DocumentModel.ReportingYear</div>
         
         @if (!hasAnyChanges)
         {
-            <MudText Typo="Typo.body1" Class="mb-4">As per the Change Order Summary Dump (Figure 1), no change was made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</MudText>
+            <p class="prep-doc-body-p">As per the Change Order Summary Dump (Figure 1), no change was made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</p>
         }
         else
         {
@@ -359,36 +342,36 @@
             var countWord = totalChangesCount switch { 1 => "One", 2 => "Two", 3 => "Three", 4 => "Four", 5 => "Five", 6 => "Six", 7 => "Seven", 8 => "Eight", 9 => "Nine", 10 => "Ten", _ => totalChangesCount.ToString() };
             string changePlural = totalChangesCount == 1 ? "change was" : "changes were";
             
-            if (hasSpecificChanges && hasFigure2)
+            if (hasFigure2)
             {
-                <MudText Typo="Typo.body1" Class="mb-4">As per the Change Order Summary Dump (Figure 1) & (Figure 2), @countWord @changePlural made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</MudText>
+                <p class="prep-doc-body-p">As per the Change Order Summary Dump (Figure 1) &amp; (Figure 2), @countWord @changePlural made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</p>
             }
             else
             {
-                <MudText Typo="Typo.body1" Class="mb-4">As per the Change Order Summary Dump (Figure 1), @countWord @changePlural made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</MudText>
+                <p class="prep-doc-body-p">As per the Change Order Summary Dump (Figure 1), @countWord @changePlural made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</p>
             }
         }
 
         @if (DocumentModel.SummaryTableScreenshot != null && (!string.IsNullOrWhiteSpace(DocumentModel.SummaryTableScreenshot.Base64Data) || !string.IsNullOrWhiteSpace(DocumentModel.SummaryTableScreenshot.StorageReference)))
         {
-            <div style="text-align: center; margin-bottom: 2rem;">
+            <div style="text-align: center; margin-bottom: 1.5rem;">
                 <img src="@(DocumentModel.SummaryTableScreenshot.Base64Data ?? $"/{DocumentModel.SummaryTableScreenshot.StorageReference}")" alt="Summary Table" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-                <MudText Typo="Typo.subtitle1" Style="font-weight: bold; text-decoration: underline;" Class="mt-2">Figure -1</MudText>
+                <div class="prep-doc-fig-caption">Figure -1</div>
             </div>
         }
         
-        @if (hasSpecificChanges && hasFigure2)
+        @if (hasAnyChanges && hasFigure2)
         {
-            <div style="text-align: center; margin-bottom: 2rem;">
+            <div style="text-align: center; margin-bottom: 1.5rem;">
                 <img src="@(DocumentModel.ExcelScreenshot.Base64Data ?? $"/{DocumentModel.ExcelScreenshot.StorageReference}")" alt="Excel Dump" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
-                <MudText Typo="Typo.subtitle1" Style="font-weight: bold; text-decoration: underline;" Class="mt-2">Figure -2</MudText>
+                <div class="prep-doc-fig-caption">Figure -2</div>
             </div>
         }
 
         @if (DocumentModel.Application == "POS" && DocumentModel.SiemScreenshot != null && (!string.IsNullOrWhiteSpace(DocumentModel.SiemScreenshot.Base64Data) || !string.IsNullOrWhiteSpace(DocumentModel.SiemScreenshot.StorageReference)))
         {
-            <div style="margin-bottom: 2rem;">
-                <MudText Typo="Typo.body1" Style="font-weight: bold;" Class="mb-2">Mentioned attached SIEM is a standard change. It should not be part of the CM review for @monthStr-@DocumentModel.ReportingYear.</MudText>
+            <div style="margin-bottom: 1.5rem;">
+                <div class="prep-doc-sub-heading">Mentioned attached SIEM is a standard change. It should not be part of the CM review for @monthStr-@DocumentModel.ReportingYear.</div>
                 <div style="text-align: left;">
                     @if (!string.IsNullOrEmpty(DocumentModel.SiemScreenshot.FileName) && (DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsb", StringComparison.OrdinalIgnoreCase) || DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) || DocumentModel.SiemScreenshot.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)))
                     {
@@ -406,36 +389,36 @@
         }
 
         <!-- Comparison Summary -->
-        <MudText Typo="Typo.h6" Style="font-weight: bold;">11.Comparison Summary</MudText>
+        <div class="prep-doc-section-heading mt-4">11. Comparison Summary</div>
         @if (string.IsNullOrWhiteSpace(DocumentModel.ComparisonSummary))
         {
-            @if (hasSpecificChanges)
+            @if (hasAnyChanges)
             {
                 var totalChangesCount = DocumentModel.ChangeCategories.Where(c => c.HasChanges).SelectMany(c => c.ChangeDetails).Count();
                 if (totalChangesCount == 0) totalChangesCount = DocumentModel.WOReportItems.Count; // fallback
                 var countWord = totalChangesCount switch { 1 => "One", 2 => "Two", 3 => "Three", 4 => "Four", 5 => "Five", 6 => "Six", 7 => "Seven", 8 => "Eight", 9 => "Nine", 10 => "Ten", _ => totalChangesCount.ToString() };
                 string changePlural = totalChangesCount == 1 ? "change was" : "changes were";
                 string unauthorizedChanges = totalChangesCount == 1 ? "change was" : "changes were";
-                <MudText Typo="Typo.body1" Class="mb-6">@countWord @changePlural made to the @DocumentModel.Application System for the month of @monthStr-@DocumentModel.ReportingYear. <strong>No unauthorized @unauthorizedChanges made.</strong></MudText>
+                <p class="prep-doc-body-p">@countWord @changePlural made to the @DocumentModel.Application System for the month of @monthStr-@DocumentModel.ReportingYear. <strong>No unauthorized @unauthorizedChanges made.</strong></p>
             }
             else
             {
-                <MudText Typo="Typo.body1" Class="mb-6">No change was made to the @DocumentModel.Application System for the month of @monthStr-@DocumentModel.ReportingYear. <strong>No unauthorized change was made.</strong></MudText>
+                <p class="prep-doc-body-p">No change was made to the @DocumentModel.Application System for the month of @monthStr-@DocumentModel.ReportingYear. <strong>No unauthorized change was made.</strong></p>
             }
         }
         else
         {
-            <MudText Typo="Typo.body1" Class="mb-6">@((MarkupString)DocumentModel.ComparisonSummary.Replace("\n", "<br/>"))</MudText>
+            <p class="prep-doc-body-p">@((MarkupString)DocumentModel.ComparisonSummary.Replace("\n", "<br/>"))</p>
         }
 
         <!-- Approvals -->
-        <MudText Typo="Typo.h6" Style="font-weight: bold;">Verifier/Approval</MudText>
-        <div style="margin-top: 3rem;">
-            <MudText Typo="Typo.body1">------------------------------------</MudText>
-            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierName)) { <MudText Typo="Typo.body1" Style="font-weight: bold;">@(DocumentModel.VerifierName)</MudText> }
-            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierDesignation)) { <MudText Typo="Typo.body1" Style="font-weight: bold;">@(DocumentModel.VerifierDesignation)</MudText> }
-            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierDepartment)) { <MudText Typo="Typo.body1">@(DocumentModel.VerifierDepartment)</MudText> }
-            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierOrganization)) { <MudText Typo="Typo.body1">@(DocumentModel.VerifierOrganization)</MudText> }
+        <div class="prep-doc-section-heading mt-4">Verifier/Approval</div>
+        <div style="margin-top: 2rem; font-size: 0.78rem; line-height: 1.5;">
+            <div style="color: #94a3b8; margin-bottom: 4px;">------------------------------------</div>
+            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierName)) { <div style="font-weight: 700;">@(DocumentModel.VerifierName)</div> }
+            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierDesignation)) { <div style="font-weight: 700;">@(DocumentModel.VerifierDesignation)</div> }
+            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierDepartment)) { <div>@(DocumentModel.VerifierDepartment)</div> }
+            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierOrganization)) { <div>@(DocumentModel.VerifierOrganization)</div> }
         </div>
     }
 </div>

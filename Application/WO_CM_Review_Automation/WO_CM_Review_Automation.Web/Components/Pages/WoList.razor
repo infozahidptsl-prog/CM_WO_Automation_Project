@@ -1,10 +1,1200 @@
 @page "/wo-list"
+@using WO_CM_Review_Automation.Application.Reports
+@using WO_CM_Review_Automation.Domain.Entities
+@using WO_CM_Review_Automation.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@using System.Text
+@using System.Text.RegularExpressions
+@inject ApplicationDbContext DbContext
+@inject IWorkOrderFilterService FilterService
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
 
-<PageTitle>Work Orders - WO CM Review</PageTitle>
+<PageTitle>Work Order Archive - WO CM Review</PageTitle>
 
-<EnterprisePageHeader Title="Work Order Master List" Subtitle="View and filter all imported work orders" />
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (!_allItems.Any())
+{
+    <EnterpriseEmptyState 
+        Icon="@Icons.Material.Filled.ListAlt" 
+        Title="No Work Orders" 
+        Description="There are currently no work orders available to display in the Work Order Archive." />
+}
+else
+{
+    <div class="wolist-wrapper">
+        <!-- Top Header Row -->
+        <div class="wolist-header-row">
+            <div>
+                <h1 class="wolist-title">Work Order Archive</h1>
+                <div class="wolist-subtitle">@_allItems.Count work orders in scope · @_monthYearLabel · Click any row to expand full work order details</div>
+            </div>
 
-<EnterpriseEmptyState 
-    Icon="@Icons.Material.Filled.ListAlt" 
-    Title="No Work Orders" 
-    Description="There are currently no work orders available to display in the master list." />
+            <div class="d-flex align-center gap-2">
+                <button type="button" class="dash-btn-outlined" @onclick="ExportCsvAsync">
+                    <MudIcon Icon="@Icons.Material.Outlined.Download" Size="Size.Small" Style="font-size: 16px;" />
+                    <span>Export CSV</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Search & Filter Pills Bar -->
+        <div class="wolist-toolbar">
+            <div class="wolist-toolbar-left">
+                <!-- Search Input -->
+                <div class="wolist-search-box">
+                    <MudIcon Icon="@Icons.Material.Outlined.Search" Size="Size.Small" Class="wolist-search-icon" />
+                    <input type="text"
+                           placeholder="Search WO number, summary, assignee, issuer, vendor..."
+                           value="@_searchText"
+                           @oninput="OnSearchInput"
+                           class="wolist-search-input" />
+                </div>
+
+                <!-- Application Filter Tabs -->
+                <div class="wolist-app-tabs">
+                    @foreach (var tab in _appTabs)
+                    {
+                        var isActive = string.Equals(_selectedAppTab, tab, StringComparison.OrdinalIgnoreCase);
+                        <button type="button"
+                                class="wolist-app-tab @(isActive ? "active" : "")"
+                                @onclick="@(() => SelectAppTab(tab))">
+                            @tab
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <!-- Right: More Filters Button -->
+            <div class="wolist-toolbar-right">
+                <button type="button" class="wolist-more-filters-btn @(_showMoreFilters ? "open" : "")" @onclick="@(() => _showMoreFilters = !_showMoreFilters)">
+                    <MudIcon Icon="@Icons.Material.Outlined.Tune" Size="Size.Small" Style="font-size: 15px;" />
+                    <span>More filters</span>
+                </button>
+            </div>
+        </div>
+
+        @if (_showMoreFilters)
+        {
+            <div class="wolist-extra-filters">
+                <div class="wolist-extra-filter-group">
+                    <label>Dataset</label>
+                    <select value="@_selectedDataset" @onchange="OnDatasetChanged" class="wolist-select">
+                        <option value="all">All datasets (@_recentUploads.Count uploads)</option>
+                        @foreach (var up in _recentUploads)
+                        {
+                            <option value="@up.Id">@GetUploadMonthYearLabel(up) — @up.FileName</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="wolist-extra-filter-group">
+                    <label>Month</label>
+                    <select value="@_selectedMonthFilter" @onchange="OnMonthFilterChanged" class="wolist-select">
+                        <option value="all">All months</option>
+                        @foreach (var monthOpt in AvailableMonthOptions)
+                        {
+                            <option value="@monthOpt.Key">@monthOpt.Label (@monthOpt.Count)</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="wolist-extra-filter-group">
+                    <label>Date range</label>
+                    <div class="wolist-date-range-wrap">
+                        <input type="date"
+                               class="wolist-date-input"
+                               value="@(_dateFrom?.ToString("yyyy-MM-dd") ?? "")"
+                               min="@DateInputMin"
+                               max="@DateInputMax"
+                               @onchange="OnDateFromChanged"
+                               title="From executed/issue date" />
+                        <span class="wolist-date-sep">to</span>
+                        <input type="date"
+                               class="wolist-date-input"
+                               value="@(_dateTo?.ToString("yyyy-MM-dd") ?? "")"
+                               min="@DateInputMin"
+                               max="@DateInputMax"
+                               @onchange="OnDateToChanged"
+                               title="To executed/issue date" />
+                    </div>
+                </div>
+
+                <div class="wolist-extra-filter-group">
+                    <label>Change type</label>
+                    <select @bind="_selectedTypeFilter" @bind:after="@(() => _currentPage = 1)" class="wolist-select">
+                        <option value="All">All types</option>
+                        @foreach (var ctOpt in AvailableChangeTypeOptions)
+                        {
+                            <option value="@ctOpt.Name">@ctOpt.Name (@ctOpt.Count)</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="wolist-extra-filter-group">
+                    <label>Scope</label>
+                    <select value="@(_mappedOnly ? "mapped" : "all")" @onchange="OnScopeChanged" class="wolist-select">
+                        <option value="all">All team scope (@_allItems.Count)</option>
+                        <option value="mapped">Mapped applications only (@_allItems.Count(x => x.IsMappedApp))</option>
+                    </select>
+                </div>
+
+                @if (HasActiveExtraFilters)
+                {
+                    <button type="button" class="wolist-filter-reset-btn" @onclick="ResetFiltersAsync">
+                        <MudIcon Icon="@Icons.Material.Outlined.RestartAlt" Style="font-size: 14px;" />
+                        <span>Reset filters</span>
+                    </button>
+                }
+            </div>
+        }
+
+        <!-- WO Archive Table Card -->
+        <div class="wolist-table-card">
+            <div class="wolist-thead">
+                <div class="wolist-col-wo">WO</div>
+                <div class="wolist-col-summary">Summary</div>
+                <div class="wolist-col-app">Application</div>
+                <div class="wolist-col-type">Type</div>
+                <div class="wolist-col-status">Status</div>
+                <div class="wolist-col-exec">Executed</div>
+            </div>
+
+            <div class="wolist-tbody">
+                @if (!FilteredItems.Any())
+                {
+                    <div class="wolist-empty-row">
+                        No work orders match your current search or filter criteria.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var item in DisplayedItems)
+                    {
+                        var isSelected = _selectedRow != null && _selectedRow.RowId == item.RowId;
+                        var isCopied = _copiedWoId == item.DisplayWoId;
+
+                        <div class="wolist-row-group @(isSelected ? "expanded" : "")">
+                            <div class="wolist-row wolist-row-clickable @(isSelected ? "selected" : "")" @onclick="@(() => SelectRow(item))">
+                                <!-- Copyable WO Number Cell -->
+                                <div class="wolist-col-wo">
+                                    <div class="wolist-wo-cell-wrap" @onclick:stopPropagation="true">
+                                        <span class="wolist-wo-text" title="Select or click copy icon to copy WO number">@item.DisplayWoId</span>
+                                        <button type="button"
+                                                class="wolist-copy-btn @(isCopied ? "copied" : "")"
+                                                title="Copy WO @item.DisplayWoId"
+                                                @onclick="@(() => CopyWoNumberAsync(item.DisplayWoId))">
+                                            <MudIcon Icon="@(isCopied ? Icons.Material.Outlined.Check : Icons.Material.Outlined.ContentCopy)"
+                                                     Style="font-size: 13px;" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="wolist-col-summary" title="@item.Summary">@item.Summary</div>
+                                <div class="wolist-col-app" title="@item.RawServiceName">@item.ApplicationDisplay</div>
+                                <div class="wolist-col-type @(item.IsEmergency ? "emergency" : "")" title="@item.RawChangeType">@item.DisplayType</div>
+                                <div class="wolist-col-status">
+                                    <span class="wolist-status-pill @(item.IsImplemented ? "implemented" : "closed")">
+                                        <span class="wolist-status-dot"></span>@item.DisplayStatus
+                                    </span>
+                                </div>
+                                <div class="wolist-col-exec wolist-col-exec-with-chevron">
+                                    <span>@item.DisplayExecutedDate</span>
+                                    <MudIcon Icon="@(isSelected ? Icons.Material.Outlined.KeyboardArrowUp : Icons.Material.Outlined.KeyboardArrowDown)"
+                                             Class="wolist-row-chevron"
+                                             Style="font-size: 16px;" />
+                                </div>
+                            </div>
+
+                            <!-- Inline Hide/Unhide Full Work Order Details Panel -->
+                            @if (isSelected)
+                            {
+                                <div class="wolist-expand-panel">
+                                    <!-- Top Header inside Expanded Panel -->
+                                    <div class="wolist-expand-top">
+                                        <div class="wolist-expand-top-left">
+                                            <div class="wolist-expand-wo-badge">
+                                                <span class="wolist-expand-wo-label">WO #</span>
+                                                <span class="wolist-expand-wo-number">@item.DisplayWoId</span>
+                                                <button type="button"
+                                                        class="wolist-expand-copy-pill @(isCopied ? "copied" : "")"
+                                                        @onclick="@(() => CopyWoNumberAsync(item.DisplayWoId))">
+                                                    <MudIcon Icon="@(isCopied ? Icons.Material.Outlined.Check : Icons.Material.Outlined.ContentCopy)"
+                                                             Style="font-size: 12px;" />
+                                                    <span>@(isCopied ? "Copied" : "Copy WO")</span>
+                                                </button>
+                                            </div>
+
+                                            @if (!string.IsNullOrWhiteSpace(item.RawWoId) && !string.Equals(item.RawWoId, item.DisplayWoId, StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <span class="wolist-expand-meta-chip">Raw ID: @item.RawWoId</span>
+                                            }
+                                            @if (item.ExcelRowIndex > 0)
+                                            {
+                                                <span class="wolist-expand-meta-chip">Excel Row #@item.ExcelRowIndex</span>
+                                            }
+                                            <span class="wolist-status-pill @(item.IsImplemented ? "implemented" : "closed")">
+                                                <span class="wolist-status-dot"></span>@item.RawStatus
+                                            </span>
+                                        </div>
+
+                                        <div class="wolist-expand-routing-tag">
+                                            <MudIcon Icon="@Icons.Material.Outlined.Article" Style="font-size: 14px; color: #2563eb;" />
+                                            <span>Included in <strong>@item.ApplicationDisplay · @item.PeriodLabel</strong> CM Review under <strong>"@item.TargetCategoryName"</strong></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Full Untruncated Subject / Summary Box -->
+                                    <div class="wolist-expand-subject-box">
+                                        <div class="d-flex align-center justify-space-between">
+                                            <div class="wolist-expand-subject-label">Full Subject / Change Description</div>
+                                            <button type="button"
+                                                    class="wolist-inline-copy-btn @(_copiedFieldKey == $"{item.RowId}_Subject" ? "copied" : "")"
+                                                    title="Copy Subject"
+                                                    @onclick="@(() => CopyFieldValueAsync($"{item.RowId}_Subject", "Subject", item.Summary))">
+                                                <MudIcon Icon="@(_copiedFieldKey == $"{item.RowId}_Subject" ? Icons.Material.Outlined.Check : Icons.Material.Outlined.ContentCopy)"
+                                                         Style="font-size: 12px;" />
+                                                <span>@(_copiedFieldKey == $"{item.RowId}_Subject" ? "Copied" : "Copy")</span>
+                                            </button>
+                                        </div>
+                                        <div class="wolist-expand-subject-text" @onclick="@(() => CopyFieldValueAsync($"{item.RowId}_Subject", "Subject", item.Summary))" title="Click to copy Subject">@item.Summary</div>
+                                    </div>
+
+                                    <!-- 3-Column Comprehensive Details Grid -->
+                                    <div class="wolist-expand-grid">
+                                        <!-- Column 1: Service & Classification -->
+                                        <div class="wolist-expand-card">
+                                            <div class="wolist-expand-card-title">
+                                                <MudIcon Icon="@Icons.Material.Outlined.Layers" Style="font-size: 14px;" />
+                                                <span>Service &amp; Classification</span>
+                                            </div>
+                                            <div class="wolist-expand-kv-list">
+                                                @RenderCopyableKv(item, "Mapped Application", item.ApplicationDisplay, "fw-600")
+                                                @RenderCopyableKv(item, "Raw Service Name", FormatFieldValue(item.RawServiceName))
+                                                @RenderCopyableKv(item, "WO Type", FormatFieldValue(item.WoType))
+                                                @RenderCopyableKv(item, "Change Type", FormatFieldValue(item.RawChangeType, item.DisplayType), item.IsEmergency ? "emergency" : "")
+                                                @RenderCopyableKv(item, "Domain", FormatFieldValue(item.Domain))
+                                                @RenderCopyableKv(item, "NE Type / Count", $"{FormatFieldValue(item.NeType)} {(item.NeCount.HasValue ? $"({item.NeCount.Value})" : "")}".Trim())
+                                                @RenderCopyableKv(item, "Vendor", FormatFieldValue(item.Vendor))
+                                            </div>
+                                        </div>
+
+                                        <!-- Column 2: Ownership & Approvals -->
+                                        <div class="wolist-expand-card">
+                                            <div class="wolist-expand-card-title">
+                                                <MudIcon Icon="@Icons.Material.Outlined.VerifiedUser" Style="font-size: 14px;" />
+                                                <span>Ownership &amp; Approvals</span>
+                                            </div>
+                                            <div class="wolist-expand-kv-list">
+                                                @RenderCopyableKv(item, "Team Lead / POC", FormatFieldValue(item.TeamLeaderName, item.AssigneeDisplay), "fw-600")
+                                                @RenderCopyableKv(item, "Assignee (Raw)", FormatFieldValue(item.Assignee))
+                                                @RenderCopyableKv(item, "Issuer", FormatFieldValue(item.Issuer))
+                                                @RenderCopyableKv(item, "Issuer Office", FormatFieldValue(item.IssuerOffice))
+                                                @RenderCopyableKv(item, "LM Approver", FormatFieldValue(item.LmApprover))
+                                                @RenderCopyableKv(item, "QA / KPI Checked By", FormatFieldValue(item.QaKpiCheckedBy))
+                                                @RenderCopyableKv(item, "SLA Status", FormatFieldValue(item.Sla))
+                                            </div>
+                                        </div>
+
+                                        <!-- Column 3: Timeline & Processing -->
+                                        <div class="wolist-expand-card">
+                                            <div class="wolist-expand-card-title">
+                                                <MudIcon Icon="@Icons.Material.Outlined.Schedule" Style="font-size: 14px;" />
+                                                <span>Timeline &amp; Execution</span>
+                                            </div>
+                                            <div class="wolist-expand-kv-list">
+                                                @RenderCopyableKv(item, "Issue Date/Time", FormatFieldValue(item.DisplayIssueDateTime), "mono")
+                                                @RenderCopyableKv(item, "Proposed Schedule", FormatFieldValue(item.DisplayProposedDateTime), "mono")
+                                                @RenderCopyableKv(item, "Execution Start", FormatFieldValue(item.DisplayExecutionStart), "mono")
+                                                @RenderCopyableKv(item, "Execution End", FormatFieldValue(item.DisplayExecutionEnd), "mono fw-600")
+                                                @RenderCopyableKv(item, "Approval Date", FormatFieldValue(item.DisplayApprovalDate), "mono")
+                                                @RenderCopyableKv(item, "App Count in WO", item.ApplicationCount > 0 ? item.ApplicationCount.ToString() : "1")
+                                                @RenderCopyableKv(item, "Processing Remarks", FormatFieldValue(item.ProcessingRemarks, "Matched in team scope"))
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+            <!-- Table Footer Customized Pagination -->
+            <div class="mreports-footer">
+                <div class="mreports-footer-left">
+                    <div class="mreports-pagesize-group">
+                        <label class="mreports-pagesize-label">Rows per page</label>
+                        <select class="mreports-pagesize-select" value="@_pageSize" @onchange="OnPageSizeChanged">
+                            <option value="5">5</option>
+                            <option value="10">10</option>
+                            <option value="12">12</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="0">All (@FilteredItems.Count)</option>
+                        </select>
+                    </div>
+
+                    <span class="mreports-footer-sep">·</span>
+
+                    <div class="mreports-footer-info">
+                        @if (FilteredItems.Any())
+                        {
+                            <span>Showing <strong>@StartRowIndex–@EndRowIndex</strong> of <strong>@FilteredItems.Count</strong></span>
+                        }
+                        else
+                        {
+                            <span>0 of 0</span>
+                        }
+                    </div>
+                </div>
+
+                @if (TotalPages > 1)
+                {
+                    <div class="mreports-pagination">
+                        <button type="button"
+                                class="mreports-page-btn nav"
+                                title="First page"
+                                disabled="@(_currentPage <= 1)"
+                                @onclick="@(() => GoToPage(1))">
+                            «
+                        </button>
+                        <button type="button"
+                                class="mreports-page-btn nav"
+                                title="Previous page"
+                                disabled="@(_currentPage <= 1)"
+                                @onclick="@(() => GoToPage(_currentPage - 1))">
+                            ‹
+                        </button>
+
+                        @for (int p = 1; p <= TotalPages; p++)
+                        {
+                            var pageNum = p;
+                            <button type="button"
+                                    class="mreports-page-btn @(pageNum == _currentPage ? "active" : "")"
+                                    @onclick="@(() => GoToPage(pageNum))">
+                                @pageNum
+                            </button>
+                        }
+
+                        <button type="button"
+                                class="mreports-page-btn nav"
+                                title="Next page"
+                                disabled="@(_currentPage >= TotalPages)"
+                                @onclick="@(() => GoToPage(_currentPage + 1))">
+                            ›
+                        </button>
+                        <button type="button"
+                                class="mreports-page-btn nav"
+                                title="Last page"
+                                disabled="@(_currentPage >= TotalPages)"
+                                @onclick="@(() => GoToPage(TotalPages))">
+                            »
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isLoading = true;
+    private List<UploadHistory> _recentUploads = new();
+    private string _selectedDataset = "all";
+    private string _monthYearLabel = "All periods";
+
+    private List<WoMasterRow> _allItems = new();
+    private WoMasterRow? _selectedRow;
+    private string? _copiedWoId;
+    private string? _copiedFieldKey;
+    private string _searchText = string.Empty;
+    private string _selectedAppTab = "All";
+    private string _selectedTypeFilter = "All";
+    private string _selectedMonthFilter = "all";
+    private bool _mappedOnly = false;
+    private DateTime? _dateFrom;
+    private DateTime? _dateTo;
+    private bool _showMoreFilters = false;
+    private int _currentPage = 1;
+    private int _pageSize = 12;
+
+    private record MonthFilterOption(string Key, string Label, DateTime SortMonth, int Count);
+    private record ChangeTypeFilterOption(string Name, int Count);
+
+    private List<ChangeTypeFilterOption> AvailableChangeTypeOptions =>
+        _allItems
+            .Where(x => !string.IsNullOrWhiteSpace(x.DisplayType) && x.DisplayType != "-")
+            .GroupBy(x => x.DisplayType, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ChangeTypeFilterOption(g.First().DisplayType, g.Count()))
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Name)
+            .ToList();
+
+    private List<MonthFilterOption> AvailableMonthOptions
+    {
+        get
+        {
+            return _allItems
+                .Select(x =>
+                {
+                    if (x.ParsedDate.HasValue)
+                    {
+                        var dt = new DateTime(x.ParsedDate.Value.Year, x.ParsedDate.Value.Month, 1);
+                        return (Key: dt.ToString("yyyy-MM"), Label: dt.ToString("MMMM yyyy"), Sort: dt);
+                    }
+                    if (DateTime.TryParseExact(x.PeriodLabel, "MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var pDt))
+                    {
+                        return (Key: pDt.ToString("yyyy-MM"), Label: pDt.ToString("MMMM yyyy"), Sort: pDt);
+                    }
+                    return (Key: "", Label: "", Sort: DateTime.MinValue);
+                })
+                .Where(m => !string.IsNullOrEmpty(m.Key))
+                .GroupBy(m => m.Key)
+                .Select(g => new MonthFilterOption(g.Key, g.First().Label, g.First().Sort, g.Count()))
+                .OrderByDescending(m => m.SortMonth)
+                .ToList();
+        }
+    }
+
+    private string? DateInputMin
+    {
+        get
+        {
+            if (!string.Equals(_selectedMonthFilter, "all", StringComparison.OrdinalIgnoreCase) &&
+                DateTime.TryParseExact(_selectedMonthFilter + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt))
+            {
+                return dt.ToString("yyyy-MM-dd");
+            }
+            return null;
+        }
+    }
+
+    private string? DateInputMax
+    {
+        get
+        {
+            if (!string.Equals(_selectedMonthFilter, "all", StringComparison.OrdinalIgnoreCase) &&
+                DateTime.TryParseExact(_selectedMonthFilter + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt))
+            {
+                var lastDay = new DateTime(dt.Year, dt.Month, DateTime.DaysInMonth(dt.Year, dt.Month));
+                return lastDay.ToString("yyyy-MM-dd");
+            }
+            return null;
+        }
+    }
+
+    private bool HasActiveExtraFilters =>
+        !string.Equals(_selectedDataset, "all", StringComparison.OrdinalIgnoreCase) ||
+        !string.Equals(_selectedMonthFilter, "all", StringComparison.OrdinalIgnoreCase) ||
+        !string.Equals(_selectedTypeFilter, "All", StringComparison.OrdinalIgnoreCase) ||
+        _mappedOnly ||
+        _dateFrom.HasValue ||
+        _dateTo.HasValue;
+
+    private readonly string[] _appTabs = new[]
+    {
+        "All", "POS", "DMS", "Sales Force App", "TechVan", "AMS", "LEA"
+    };
+
+    private class WoMasterRow
+    {
+        public Guid RowId { get; set; } = Guid.NewGuid();
+        public int ExcelRowIndex { get; set; }
+        public string RawWoId { get; set; } = string.Empty;
+        public string DisplayWoId { get; set; } = string.Empty;
+        public long SortWoNum { get; set; }
+        public string Summary { get; set; } = string.Empty;
+        public string RawServiceName { get; set; } = string.Empty;
+        public string ApplicationDisplay { get; set; } = string.Empty;
+        public bool IsMappedApp { get; set; }
+        public string WoType { get; set; } = string.Empty;
+        public string RawChangeType { get; set; } = string.Empty;
+        public string DisplayType { get; set; } = string.Empty;
+        public bool IsEmergency { get; set; }
+        public string RawStatus { get; set; } = "Closed";
+        public string DisplayStatus { get; set; } = "Closed";
+        public bool IsImplemented { get; set; }
+        public string Domain { get; set; } = string.Empty;
+        public string NeType { get; set; } = string.Empty;
+        public int? NeCount { get; set; }
+        public string Vendor { get; set; } = string.Empty;
+        public string Issuer { get; set; } = string.Empty;
+        public string IssuerOffice { get; set; } = string.Empty;
+        public string LmApprover { get; set; } = string.Empty;
+        public string QaKpiCheckedBy { get; set; } = string.Empty;
+        public string Assignee { get; set; } = string.Empty;
+        public string AssigneeDisplay { get; set; } = string.Empty;
+        public string TeamLeaderName { get; set; } = string.Empty;
+        public string Sla { get; set; } = string.Empty;
+        public string DisplayIssueDateTime { get; set; } = "-";
+        public string DisplayProposedDateTime { get; set; } = "-";
+        public string DisplayExecutedDate { get; set; } = "-";
+        public string DisplayExecutionStart { get; set; } = "-";
+        public string DisplayExecutionEnd { get; set; } = "-";
+        public string DisplayApprovalDate { get; set; } = "-";
+        public int ApplicationCount { get; set; }
+        public string ProcessingRemarks { get; set; } = string.Empty;
+        public string TargetCategoryName { get; set; } = "Implementation of Change Request";
+        public string PeriodLabel { get; set; } = string.Empty;
+        public DateTime? ParsedDate { get; set; }
+    }
+
+    private List<WoMasterRow> FilteredItems
+    {
+        get
+        {
+            IEnumerable<WoMasterRow> query = _allItems;
+
+            if (_mappedOnly)
+            {
+                query = query.Where(x => x.IsMappedApp);
+            }
+
+            if (!string.Equals(_selectedAppTab, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(x => string.Equals(x.ApplicationDisplay, _selectedAppTab, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.Equals(_selectedTypeFilter, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(x => string.Equals(x.DisplayType, _selectedTypeFilter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.Equals(_selectedMonthFilter, "all", StringComparison.OrdinalIgnoreCase) &&
+                DateTime.TryParseExact(_selectedMonthFilter + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var filterMonthDt))
+            {
+                var targetLabel = filterMonthDt.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                query = query.Where(x =>
+                    (x.ParsedDate.HasValue && x.ParsedDate.Value.Year == filterMonthDt.Year && x.ParsedDate.Value.Month == filterMonthDt.Month) ||
+                    (!x.ParsedDate.HasValue && string.Equals(x.PeriodLabel, targetLabel, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (_dateFrom.HasValue)
+            {
+                var fromDate = _dateFrom.Value.Date;
+                query = query.Where(x => x.ParsedDate.HasValue && x.ParsedDate.Value.Date >= fromDate);
+            }
+
+            if (_dateTo.HasValue)
+            {
+                var toDate = _dateTo.Value.Date;
+                query = query.Where(x => x.ParsedDate.HasValue && x.ParsedDate.Value.Date <= toDate);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                var q = _searchText.Trim();
+                query = query.Where(x =>
+                    x.DisplayWoId.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.RawWoId.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.Summary.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.ApplicationDisplay.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.RawServiceName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.Assignee.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.AssigneeDisplay.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.Issuer.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.Vendor.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.PeriodLabel.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    x.DisplayExecutedDate.Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return query.ToList();
+        }
+    }
+
+    private int EffectivePageSize => _pageSize <= 0 ? Math.Max(1, FilteredItems.Count) : _pageSize;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredItems.Count / (double)EffectivePageSize));
+
+    private List<WoMasterRow> DisplayedItems =>
+        FilteredItems.Skip((_currentPage - 1) * EffectivePageSize).Take(EffectivePageSize).ToList();
+
+    private int StartRowIndex => FilteredItems.Any() ? ((_currentPage - 1) * EffectivePageSize) + 1 : 0;
+    private int EndRowIndex => Math.Min(_currentPage * EffectivePageSize, FilteredItems.Count);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _recentUploads = await DbContext.UploadHistories
+            .OrderByDescending(u => u.UploadDate)
+            .ToListAsync();
+
+        if (_recentUploads.Any())
+        {
+            _selectedDataset = "all";
+            await LoadWorkOrdersAsync(_selectedDataset);
+        }
+        else
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadWorkOrdersAsync(string datasetSelection)
+    {
+        _isLoading = true;
+        try
+        {
+            var appMappings = await DbContext.ApplicationMappings.Where(m => m.IsActive).ToListAsync();
+            var fuMappings = await DbContext.FunctionalUnitMappings.Where(m => m.IsActive).ToListAsync();
+            var tlMappings = await DbContext.TeamLeaderMappings.ToListAsync();
+            var catMappings = await DbContext.ChangeCategoryMappings.Where(m => m.IsActive).ToListAsync();
+
+            var targetUploads = new List<UploadHistory>();
+            var isAllDatasets = string.IsNullOrWhiteSpace(datasetSelection) ||
+                                string.Equals(datasetSelection, "all", StringComparison.OrdinalIgnoreCase);
+
+            if (!isAllDatasets && Guid.TryParse(datasetSelection, out var specificId))
+            {
+                var found = _recentUploads.FirstOrDefault(u => u.Id == specificId);
+                if (found != null)
+                {
+                    targetUploads.Add(found);
+                    _monthYearLabel = GetUploadMonthYearLabel(found);
+                }
+            }
+            else
+            {
+                targetUploads.AddRange(_recentUploads);
+                _monthYearLabel = $"All periods ({_recentUploads.Count} uploads)";
+            }
+
+            var rows = new List<WoMasterRow>();
+            var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var upload in targetUploads)
+            {
+                var periodLabel = GetUploadMonthYearLabel(upload);
+                var filteredWos = await FilterService.GetFilteredWorkOrdersAsync(upload.Id);
+                if (!filteredWos.Any())
+                {
+                    filteredWos = await DbContext.WorkOrders
+                        .Where(w => w.UploadHistoryId == upload.Id)
+                        .ToListAsync();
+                }
+
+                foreach (var wo in filteredWos)
+                {
+                    var cleanWoId = Regex.Replace(wo.WoId ?? "", @"^WO[\s\-_]*", "", RegexOptions.IgnoreCase).Trim();
+                    var displayWo = string.IsNullOrWhiteSpace(cleanWoId) ? (wo.WoId ?? "-") : cleanWoId;
+                    long.TryParse(Regex.Replace(cleanWoId, @"\D", ""), out long woNum);
+
+                    var (appDisplay, isMapped) = ResolveApplicationName(wo.ServiceName, appMappings, fuMappings);
+
+                    if (isAllDatasets)
+                    {
+                        var dedupeKey = $"{displayWo}|{appDisplay}|{wo.Subject?.Trim()}";
+                        if (!seenKeys.Add(dedupeKey))
+                        {
+                            continue;
+                        }
+                    }
+
+                    var (dispType, isEmergency) = NormalizeChangeType(wo.ChangeType);
+                    var (dispStatus, isImplemented) = NormalizeStatus(wo.Status);
+                    var (execStr, parsedDt) = FormatExecutedDate(wo);
+                    var issueDtStr = FormatDateTimeWithTime(wo.IssueDateTime);
+                    var proposedDtStr = FormatDateTimeWithTime(wo.ProposedDateTime);
+                    var execStartStr = FormatDateTimeWithTime(wo.ExecutionStart, wo.IssueDateTime);
+                    var execEndStr = FormatDateTimeWithTime(wo.ExecutionEnd, wo.ApprovalDate);
+                    var approvalDtStr = FormatDateTimeWithTime(wo.ApprovalDate);
+                    var (assigneeDisplay, teamLeadName) = ResolveAssigneeAndTeamLead(wo.Assignee, appDisplay, tlMappings);
+                    var targetCat = ResolveTargetCategory(appDisplay, wo.ChangeType, dispType, catMappings);
+
+                    rows.Add(new WoMasterRow
+                    {
+                        RowId = wo.Id != Guid.Empty ? wo.Id : Guid.NewGuid(),
+                        ExcelRowIndex = wo.ExcelRowIndex,
+                        RawWoId = wo.WoId ?? "",
+                        DisplayWoId = displayWo,
+                        SortWoNum = woNum,
+                        Summary = string.IsNullOrWhiteSpace(wo.Subject) ? "-" : wo.Subject.Trim(),
+                        RawServiceName = wo.ServiceName ?? "",
+                        ApplicationDisplay = appDisplay,
+                        IsMappedApp = isMapped,
+                        WoType = wo.WoType ?? "",
+                        RawChangeType = wo.ChangeType ?? "",
+                        DisplayType = dispType,
+                        IsEmergency = isEmergency,
+                        RawStatus = string.IsNullOrWhiteSpace(wo.Status) ? dispStatus : wo.Status.Trim(),
+                        DisplayStatus = dispStatus,
+                        IsImplemented = isImplemented,
+                        Domain = wo.Domain ?? "",
+                        NeType = wo.NeType ?? "",
+                        NeCount = wo.NeCount,
+                        Vendor = wo.Vendor ?? "",
+                        Issuer = wo.Issuer ?? "",
+                        IssuerOffice = wo.IssuerOffice ?? "",
+                        LmApprover = wo.LmApprover ?? "",
+                        QaKpiCheckedBy = wo.QaKpiCheckedBy ?? "",
+                        Assignee = wo.Assignee ?? "",
+                        AssigneeDisplay = assigneeDisplay,
+                        TeamLeaderName = teamLeadName,
+                        Sla = wo.Sla ?? "",
+                        DisplayIssueDateTime = issueDtStr,
+                        DisplayProposedDateTime = proposedDtStr,
+                        DisplayExecutedDate = execStr,
+                        DisplayExecutionStart = execStartStr,
+                        DisplayExecutionEnd = execEndStr,
+                        DisplayApprovalDate = approvalDtStr,
+                        ApplicationCount = wo.ApplicationCount,
+                        ProcessingRemarks = wo.ProcessingRemarks ?? "",
+                        TargetCategoryName = targetCat,
+                        PeriodLabel = periodLabel,
+                        ParsedDate = parsedDt
+                    });
+                }
+            }
+
+            // Sort mapped applications first, then by executed date descending, then by WO number descending
+            _allItems = rows
+                .OrderByDescending(r => r.IsMappedApp ? 1 : 0)
+                .ThenByDescending(r => r.ParsedDate ?? DateTime.MinValue)
+                .ThenByDescending(r => r.SortWoNum)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading work orders: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string FormatFieldValue(string? value, string fallback = "-")
+    {
+        return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+    }
+
+    private RenderFragment RenderCopyableKv(WoMasterRow item, string label, string value, string extraClass = "") => __builder =>
+    {
+        var fieldKey = $"{item.RowId}_{label}";
+        var isFieldCopied = _copiedFieldKey == fieldKey;
+        var canCopy = !string.IsNullOrWhiteSpace(value) && value != "-";
+
+        <div class="wolist-expand-kv">
+            <span class="wolist-expand-k">@label</span>
+            <div class="wolist-expand-v-wrap">
+                <span class="wolist-expand-v @extraClass @(canCopy ? "copyable" : "")"
+                      title="@(canCopy ? $"Click to copy {label}" : "")"
+                      @onclick="@(() => CopyFieldValueAsync(fieldKey, label, value))">
+                    @value
+                </span>
+                @if (canCopy)
+                {
+                    <button type="button"
+                            class="wolist-kv-copy-btn @(isFieldCopied ? "copied" : "")"
+                            title="Copy @label"
+                            @onclick="@(() => CopyFieldValueAsync(fieldKey, label, value))">
+                        <MudIcon Icon="@(isFieldCopied ? Icons.Material.Outlined.Check : Icons.Material.Outlined.ContentCopy)"
+                                 Style="font-size: 12px;" />
+                    </button>
+                }
+            </div>
+        </div>
+    };
+
+    private async Task CopyFieldValueAsync(string fieldKey, string label, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value == "-")
+            return;
+
+        try
+        {
+            var copied = await JSRuntime.InvokeAsync<bool>("copyTextToClipboard", value);
+            if (copied)
+            {
+                _copiedFieldKey = fieldKey;
+                Snackbar.Add($"Copied {label}: {value}", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 1600;
+                });
+                StateHasChanged();
+
+                await Task.Delay(1600);
+                if (_copiedFieldKey == fieldKey)
+                {
+                    _copiedFieldKey = null;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch
+        {
+            Snackbar.Add($"{label}: {value}", Severity.Info);
+        }
+    }
+
+    private async Task CopyWoNumberAsync(string woNumber)
+    {
+        if (string.IsNullOrWhiteSpace(woNumber) || woNumber == "-")
+            return;
+
+        try
+        {
+            var copied = await JSRuntime.InvokeAsync<bool>("copyTextToClipboard", woNumber);
+            if (copied)
+            {
+                _copiedWoId = woNumber;
+                Snackbar.Add($"WO {woNumber} copied to clipboard", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 1800;
+                });
+                StateHasChanged();
+
+                await Task.Delay(1800);
+                if (_copiedWoId == woNumber)
+                {
+                    _copiedWoId = null;
+                    StateHasChanged();
+                }
+            }
+            else
+            {
+                Snackbar.Add($"Could not copy WO {woNumber}", Severity.Warning);
+            }
+        }
+        catch
+        {
+            Snackbar.Add($"WO {woNumber} ready to copy", Severity.Info);
+        }
+    }
+
+    private static (string AppDisplay, bool IsMapped) ResolveApplicationName(
+        string? rawService,
+        List<ApplicationMapping> appMappings,
+        List<FunctionalUnitMapping> fuMappings)
+    {
+        if (string.IsNullOrWhiteSpace(rawService))
+            return ("-", false);
+
+        var delimiters = new[] { ',', ';', '|', '\n', '\r' };
+        var tokens = rawService.Split(delimiters, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => Regex.Replace(s.Trim(), @"\s+", " "))
+            .ToList();
+
+        foreach (var token in tokens)
+        {
+            var exactMap = appMappings.FirstOrDefault(m => m.AliasName.Equals(token, StringComparison.OrdinalIgnoreCase));
+            if (exactMap != null)
+            {
+                var norm = exactMap.NormalizedName.Equals("Techvan", StringComparison.OrdinalIgnoreCase) ? "TechVan" : exactMap.NormalizedName;
+                return (norm, true);
+            }
+        }
+
+        foreach (var fu in fuMappings)
+        {
+            if (rawService.Contains(fu.SourceValue, StringComparison.OrdinalIgnoreCase))
+            {
+                var fuName = fu.FunctionalUnitName;
+                if (fuName.Contains("Sales Force App", StringComparison.OrdinalIgnoreCase))
+                    return ("Sales Force App", true);
+                if (fuName.Equals("Techvan", StringComparison.OrdinalIgnoreCase))
+                    return ("TechVan", true);
+                return (fuName, true);
+            }
+        }
+
+        return (tokens.FirstOrDefault() ?? rawService.Trim(), false);
+    }
+
+    private static (string DisplayType, bool IsEmergency) NormalizeChangeType(string? rawType)
+    {
+        if (string.IsNullOrWhiteSpace(rawType))
+            return ("-", false);
+
+        var trimmed = rawType.Trim();
+        bool isEmerg = trimmed.Contains("Emergency", StringComparison.OrdinalIgnoreCase);
+        return (trimmed, isEmerg);
+    }
+
+    private static (string DisplayStatus, bool IsImplemented) NormalizeStatus(string? rawStatus)
+    {
+        if (string.IsNullOrWhiteSpace(rawStatus))
+            return ("Closed", false);
+
+        if (rawStatus.Contains("Implement", StringComparison.OrdinalIgnoreCase))
+            return ("Implemented", true);
+
+        if (rawStatus.Contains("Close", StringComparison.OrdinalIgnoreCase))
+            return ("Closed", false);
+
+        return (rawStatus.Trim(), !rawStatus.Contains("Close", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool TryParseArchiveDate(string? raw, out DateTime parsed)
+    {
+        parsed = default;
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var clean = raw.Trim();
+        var formats = new[]
+        {
+            "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd",
+            "dd-MM-yyyy HH:mm:ss", "dd-MM-yyyy HH:mm", "dd-MM-yyyy",
+            "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "dd/MM/yyyy",
+            "MM/dd/yyyy HH:mm:ss", "MM/dd/yyyy HH:mm", "MM/dd/yyyy",
+            "dd MMM yyyy, HH:mm", "dd MMM yyyy HH:mm", "dd MMM yyyy"
+        };
+
+        if (DateTime.TryParseExact(clean, formats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AllowWhiteSpaces, out parsed))
+            return true;
+
+        if (DateTime.TryParse(clean, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AllowWhiteSpaces, out parsed))
+            return true;
+
+        return DateTime.TryParse(clean, System.Globalization.CultureInfo.CurrentCulture, System.Globalization.DateTimeStyles.AllowWhiteSpaces, out parsed);
+    }
+
+    private static (string Formatted, DateTime? Parsed) FormatExecutedDate(WorkOrder wo)
+    {
+        var candidates = new[] { wo.ExecutionEnd, wo.ApprovalDate, wo.ExecutionStart, wo.IssueDateTime };
+        foreach (var c in candidates)
+        {
+            if (TryParseArchiveDate(c, out var dt))
+            {
+                return (dt.ToString("dd MMM yyyy"), dt);
+            }
+        }
+        return ("-", null);
+    }
+
+    private static string FormatDateTimeWithTime(params string?[] candidates)
+    {
+        foreach (var c in candidates)
+        {
+            if (TryParseArchiveDate(c, out var dt))
+            {
+                return dt.ToString("dd MMM yyyy, HH:mm");
+            }
+            if (!string.IsNullOrWhiteSpace(c))
+            {
+                return c.Trim();
+            }
+        }
+        return "-";
+    }
+
+    private static (string AssigneeDisplay, string TeamLeadName) ResolveAssigneeAndTeamLead(
+        string? rawAssignee,
+        string appDisplay,
+        List<TeamLeaderMapping> tlMappings)
+    {
+        var tl = tlMappings.FirstOrDefault(m =>
+            m.SourceValue.Equals(appDisplay, StringComparison.OrdinalIgnoreCase) ||
+            (appDisplay.Equals("Sales Force App", StringComparison.OrdinalIgnoreCase) && m.SourceValue.Contains("Sales Force", StringComparison.OrdinalIgnoreCase)));
+
+        string teamLead = tl != null && !string.IsNullOrWhiteSpace(tl.TeamLeaderName) ? tl.TeamLeaderName : "-";
+
+        if (!string.IsNullOrWhiteSpace(rawAssignee))
+        {
+            var cleaned = Regex.Replace(rawAssignee.Trim(), @"\s*\(.*?\)", "").Trim();
+            var disp = string.IsNullOrWhiteSpace(cleaned) ? rawAssignee.Trim() : cleaned;
+            return (disp, teamLead != "-" ? teamLead : disp);
+        }
+
+        return (teamLead, teamLead);
+    }
+
+    private static string ResolveTargetCategory(
+        string appDisplay,
+        string? rawChangeType,
+        string displayType,
+        List<ChangeCategoryMapping> catMappings)
+    {
+        if (!string.IsNullOrWhiteSpace(rawChangeType))
+        {
+            var mapped = catMappings.FirstOrDefault(m =>
+                m.ApplicationName.Equals(appDisplay, StringComparison.OrdinalIgnoreCase) &&
+                m.ChangeType.Equals(rawChangeType.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (mapped != null && !string.IsNullOrWhiteSpace(mapped.CategoryName))
+            {
+                return mapped.CategoryName;
+            }
+        }
+
+        if (displayType.Equals("Standard", StringComparison.OrdinalIgnoreCase))
+            return "Standard Change";
+        if (displayType.Equals("Emergency", StringComparison.OrdinalIgnoreCase))
+            return "Bug Fixing";
+
+        return "Implementation of Change Request";
+    }
+
+    private void SelectRow(WoMasterRow item)
+    {
+        if (_selectedRow != null && _selectedRow.RowId == item.RowId)
+        {
+            _selectedRow = null;
+        }
+        else
+        {
+            _selectedRow = item;
+        }
+    }
+
+    private static string GetUploadMonthYearLabel(UploadHistory upload)
+    {
+        if (!string.IsNullOrWhiteSpace(upload.FileName))
+        {
+            var monthMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["january"] = 1, ["jan"] = 1,
+                ["february"] = 2, ["feb"] = 2,
+                ["march"] = 3, ["mar"] = 3,
+                ["april"] = 4, ["apr"] = 4,
+                ["may"] = 5,
+                ["june"] = 6, ["jun"] = 6,
+                ["july"] = 7, ["jul"] = 7,
+                ["august"] = 8, ["aug"] = 8,
+                ["september"] = 9, ["sept"] = 9, ["sep"] = 9,
+                ["october"] = 10, ["oct"] = 10,
+                ["november"] = 11, ["nov"] = 11,
+                ["december"] = 12, ["dec"] = 12
+            };
+
+            var m = Regex.Match(upload.FileName, @"(january|february|march|april|may|june|july|august|september|sept|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)['\-\s_]*(\d{4})", RegexOptions.IgnoreCase);
+            if (m.Success && monthMap.TryGetValue(m.Groups[1].Value, out int fMonth) && int.TryParse(m.Groups[2].Value, out int fYear))
+            {
+                return new DateTime(fYear, fMonth, 1).ToString("MMMM yyyy");
+            }
+        }
+        return upload.UploadDate.ToString("MMMM yyyy");
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? string.Empty;
+        _currentPage = 1;
+    }
+
+    private void SelectAppTab(string tab)
+    {
+        _selectedAppTab = tab;
+        _currentPage = 1;
+    }
+
+    private async Task OnDatasetChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "all";
+        _selectedDataset = val;
+        _selectedRow = null;
+        _currentPage = 1;
+        await LoadWorkOrdersAsync(_selectedDataset);
+    }
+
+    private void OnMonthFilterChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "all";
+        _selectedMonthFilter = val;
+        // Clear any out-of-month date range so the user starts fresh for the selected month
+        _dateFrom = null;
+        _dateTo = null;
+        _currentPage = 1;
+    }
+
+    private void OnDateFromChanged(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(raw) && DateTime.TryParse(raw, out var dt))
+        {
+            _dateFrom = dt.Date;
+        }
+        else
+        {
+            _dateFrom = null;
+        }
+        _currentPage = 1;
+    }
+
+    private void OnDateToChanged(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(raw) && DateTime.TryParse(raw, out var dt))
+        {
+            _dateTo = dt.Date;
+        }
+        else
+        {
+            _dateTo = null;
+        }
+        _currentPage = 1;
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        var reloadDataset = !string.Equals(_selectedDataset, "all", StringComparison.OrdinalIgnoreCase);
+        _selectedDataset = "all";
+        _selectedMonthFilter = "all";
+        _selectedTypeFilter = "All";
+        _mappedOnly = false;
+        _dateFrom = null;
+        _dateTo = null;
+        _currentPage = 1;
+        _selectedRow = null;
+
+        if (reloadDataset)
+        {
+            await LoadWorkOrdersAsync(_selectedDataset);
+        }
+    }
+
+    private void OnScopeChanged(ChangeEventArgs e)
+    {
+        _mappedOnly = string.Equals(e.Value?.ToString(), "mapped", StringComparison.OrdinalIgnoreCase);
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page >= 1 && page <= TotalPages)
+        {
+            _currentPage = page;
+        }
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int newSize))
+        {
+            _pageSize = newSize;
+            _currentPage = 1;
+        }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("WO,Summary,Application,RawServiceName,WOType,ChangeType,Status,Domain,NEType,NECount,Vendor,Issuer,IssuerOffice,LMApprover,QAKPICheckedBy,Assignee,TeamLead,SLA,IssueDateTime,ProposedDateTime,ExecutionStart,ExecutionEnd,ApprovalDate");
+
+            foreach (var item in FilteredItems)
+            {
+                sb.AppendLine($"\"{EscapeCsv(item.DisplayWoId)}\",\"{EscapeCsv(item.Summary)}\",\"{EscapeCsv(item.ApplicationDisplay)}\",\"{EscapeCsv(item.RawServiceName)}\",\"{EscapeCsv(item.WoType)}\",\"{EscapeCsv(item.RawChangeType)}\",\"{EscapeCsv(item.DisplayStatus)}\",\"{EscapeCsv(item.Domain)}\",\"{EscapeCsv(item.NeType)}\",\"{EscapeCsv(item.NeCount?.ToString())}\",\"{EscapeCsv(item.Vendor)}\",\"{EscapeCsv(item.Issuer)}\",\"{EscapeCsv(item.IssuerOffice)}\",\"{EscapeCsv(item.LmApprover)}\",\"{EscapeCsv(item.QaKpiCheckedBy)}\",\"{EscapeCsv(item.Assignee)}\",\"{EscapeCsv(item.TeamLeaderName)}\",\"{EscapeCsv(item.Sla)}\",\"{EscapeCsv(item.DisplayIssueDateTime)}\",\"{EscapeCsv(item.DisplayProposedDateTime)}\",\"{EscapeCsv(item.DisplayExecutionStart)}\",\"{EscapeCsv(item.DisplayExecutionEnd)}\",\"{EscapeCsv(item.DisplayApprovalDate)}\"");
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+            using var streamRef = new DotNetStreamReference(new System.IO.MemoryStream(bytes));
+            var safePeriod = _monthYearLabel.Replace(" ", "_");
+            await JSRuntime.InvokeVoidAsync("downloadFileFromStream", $"WO_Archive_{safePeriod}.csv", streamRef);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting CSV: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static string EscapeCsv(string? val)
+    {
+        if (string.IsNullOrEmpty(val)) return string.Empty;
+        return val.Replace("\"", "\"\"");
+    }
+}

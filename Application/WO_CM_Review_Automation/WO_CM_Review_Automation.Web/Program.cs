@@ -24,6 +24,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddMudServices();
+builder.Services.AddSingleton<WO_CM_Review_Automation.Web.Services.UserSessionService>();
 
 // Add Clean Architecture Layers
 builder.Services.AddApplicationServices(builder.Configuration);

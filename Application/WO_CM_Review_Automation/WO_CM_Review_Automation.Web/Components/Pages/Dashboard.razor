@@ -1,182 +1,1148 @@
 @page "/"
 @using WO_CM_Review_Automation.Application.Processing
+@using WO_CM_Review_Automation.Application.Reports
 @using WO_CM_Review_Automation.Domain.Entities
 @using WO_CM_Review_Automation.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
+@using System.Text.RegularExpressions
+@using System.Globalization
 @inject ApplicationDbContext DbContext
-@inject IProcessingEngine ProcessingEngine
-@inject IDialogService DialogService
+@inject IWorkOrderFilterService FilterService
+@inject IJSRuntime JSRuntime
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
 
-<PageTitle>Dashboard - WO CM Review</PageTitle>
+<PageTitle>Dashboard - WO-CM Review Automation</PageTitle>
 
-@if (_isLoading)
-{
-    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
-}
-else if (!_recentUploads.Any())
+@if (!_isLoading && !_recentUploads.Any())
 {
     <EnterpriseEmptyState 
         Icon="@Icons.Material.Filled.SpaceDashboard" 
         Title="No Operational Data Available" 
-        Description="Import an Enterprise Excel extract to populate the operational dashboard and begin processing reports."
+        Description="Import an Enterprise Excel extract in WO Count to populate the Work Order & Change Intelligence Dashboard."
         PrimaryAction="GoToUpload"
-        PrimaryActionText="Import Data" />
+        PrimaryActionText="Upload data" />
 }
-else
+else if (_allScopedWorkOrders.Any() || _recentUploads.Any())
 {
-    <!-- Top Header -->
-    <EnterprisePageHeader Title="Operational Dashboard" Subtitle="Monthly Change Management Overview">
-        <ActionContent>
-            <MudSelect T="Guid?" Value="@_selectedUploadId" ValueChanged="OnUploadSelected" Variant="Variant.Outlined" Margin="Margin.Dense" Class="ent-input" Style="width: 280px; background-color: var(--color-bg-surface);" Underline="false">
-                @foreach (var upload in _recentUploads)
-                {
-                    <MudSelectItem T="Guid?" Value="@upload.Id">@upload.UploadDate.ToString("MMMM yyyy") - @upload.FileName</MudSelectItem>
-                }
-            </MudSelect>
-            <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="ent-btn" StartIcon="@Icons.Material.Filled.Refresh" OnClick="RefreshData" Disabled="@(_selectedUploadId == null || _isLoading)">Refresh</MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" Class="ent-btn" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteUpload" Disabled="@(_selectedUploadId == null || _isLoading)">Delete</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.PictureAsPdf" Disabled="@(_result == null)" OnClick="@(() => NavigationManager.NavigateTo("/report"))">Export Report</MudButton>
-        </ActionContent>
-    </EnterprisePageHeader>
+    <div class="wintel-wrapper">
+        <!-- Top Header + Filter Controls -->
+        <div class="wintel-header-row">
+            <div>
+                <h1 class="wintel-title">Work Order &amp; Change Intelligence Dashboard</h1>
+                <div class="wintel-subtitle">Application-wise change volume, change types, category distribution, and execution analytics</div>
+            </div>
 
-    @if (_result != null && _selectedUpload != null)
-    {
-        <!-- KPI Row -->
-        <MudGrid Spacing="3" Class="mb-6">
-            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
-                <EnterpriseStatCard Title="RAW WORK ORDERS" Value="@_result.Statistics.RawWorkOrders.ToString("N0")" SubText="Total parsed rows" Icon="@Icons.Material.Outlined.FilePresent" />
-            </MudItem>
-            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
-                <EnterpriseStatCard Title="TEAM SCOPE" Value="@_result.Statistics.FilteredWorkOrders.ToString("N0")" SubText="After exclusions applied" Icon="@Icons.Material.Outlined.FilterAlt" />
-            </MudItem>
-            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
-                <EnterpriseStatCard Title="APPLICATIONS" Value="@_result.Statistics.ProcessedApplications.ToString("N0")" SubText="Unique mapped apps" Icon="@Icons.Material.Outlined.Apps" />
-            </MudItem>
-            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
-                <EnterpriseCard Class="ent-p-md d-flex flex-column justify-center ent-card-hoverable position-relative" Style="height: 120px; overflow: hidden;">
-                    <div class="position-absolute" style="@($"top: 0; left: 0; width: 4px; height: 100%; background-color: var(--color-{(_result.Statistics.UnknownApplications > 0 ? "status-error" : "status-success")});")"></div>
-                    <div class="d-flex justify-space-between align-start mb-2">
-                        <MudText Typo="Typo.overline" Style="color: var(--color-text-secondary); font-weight: 600; letter-spacing: 0.5px;">UNKNOWN APPS</MudText>
-                        <MudIcon Icon="@Icons.Material.Outlined.HelpOutline" Size="Size.Small" Style="color: var(--color-text-muted);" />
-                    </div>
-                    <MudText Typo="Typo.h4" Class="font-weight-bold" Style="@($"color: var(--color-{(_result.Statistics.UnknownApplications > 0 ? "status-error" : "status-success")}); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 1.2; letter-spacing: -0.5px;")">@_result.Statistics.UnknownApplications</MudText>
-                    <MudText Typo="Typo.caption" Style="color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; margin-top: 4px;">Require manual mapping</MudText>
-                </EnterpriseCard>
-            </MudItem>
-            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
-                <EnterpriseStatCard Title="PROCESSING TIME" Value="@($"{_processingTimeMs} ms")" SubText="Single thread calculation" Icon="@Icons.Material.Outlined.Timer" />
-            </MudItem>
-        </MudGrid>
-
-        <!-- Main Layout (70 / 30) -->
-        <MudGrid Spacing="3">
-            <!-- Left Side: 70% -->
-            <MudItem xs="12" lg="8">
-                <EnterpriseCard Class="d-flex flex-column h-100">
-                    <EnterpriseDataGrid T="ApplicationSummaryItem" Items="@_result.MonthlySummary.Items" Title="Monthly Summary" Height="calc(100vh - 350px)">
-                        <Columns>
-                            <PropertyColumn T="ApplicationSummaryItem" TProperty="int" Property="x => x.DisplayOrder" Title="Order" Sortable="true" HeaderStyle="width: 80px;" />
-                            <PropertyColumn T="ApplicationSummaryItem" TProperty="string" Property="x => x.ApplicationName" Title="Application Name" />
-                            <TemplateColumn T="ApplicationSummaryItem" Title="Count" Sortable="true" SortBy="@(x => x.Count)" CellStyle="text-align: right; width: 120px;" HeaderStyle="text-align: right;">
-                                <CellTemplate>
-                                    <MudLink Typo="Typo.body2" Color="Color.Primary" Class="font-weight-bold" Style="cursor: pointer; text-decoration: none;" OnClick="@(() => OpenDrillDown(context.Item.ApplicationName))">
-                                        @context.Item.Count
-                                    </MudLink>
-                                </CellTemplate>
-                            </TemplateColumn>
-                        </Columns>
-                    </EnterpriseDataGrid>
-                </EnterpriseCard>
-            </MudItem>
-
-            <!-- Right Side: 30% -->
-            <MudItem xs="12" lg="4">
-                <div class="d-flex flex-column h-100 ent-gap-md" style="max-height: calc(100vh - 350px); overflow-y: auto; padding-right: 4px;">
-                    <!-- Unknown Applications -->
-                    @if (_unknownApps.Any())
-                    {
-                        <EnterpriseCard Class="ent-p-md" Style="border-left: 4px solid var(--color-warning);">
-                            <div class="d-flex align-center mb-2">
-                                <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Color="Color.Warning" Class="mr-2" />
-                                <MudText Typo="Typo.h6" Class="ent-text-h3">Action Required</MudText>
-                            </div>
-                            <MudText Typo="Typo.body2" Class="mb-4" Style="color: var(--color-text-secondary);">@_unknownApps.Count unmapped applications found.</MudText>
-                            <MudButton Variant="Variant.Outlined" Color="Color.Warning" FullWidth="true" Class="ent-btn">View Details</MudButton>
-                        </EnterpriseCard>
-                    }
-
-                    <!-- Recent Uploads -->
-                    <EnterpriseCard>
-                        <div class="ent-card-header">
-                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">Recent Uploads</MudText>
-                        </div>
-                        <MudList T="UploadHistory" Dense="true" Class="pa-0">
-                            @foreach (var upload in _recentUploads.Take(3))
+            <div class="wintel-filters-bar">
+                <!-- Period Selector + Quick Month Pills -->
+                <div class="wintel-period-pill-group">
+                    <div class="wintel-select-wrap">
+                        <span class="wintel-select-prefix">Period:</span>
+                        <select class="wintel-period-select" value="@_selectedPeriodKey" @onchange="OnPeriodSelectChanged">
+                            <option value="all">All Cycles (@_availableMonths.Count)</option>
+                            @foreach (var m in _availableMonths)
                             {
-                                <MudListItem T="UploadHistory" OnClick="@(() => OnUploadSelected(upload.Id))" Class="pa-4" Style="border-bottom: 1px solid var(--color-border);">
-                                    <div class="d-flex justify-space-between align-center w-100 mb-1">
-                                        <MudText Typo="Typo.body2" Class="font-weight-bold">@upload.UploadDate.ToString("MMMM yyyy")</MudText>
-                                        <MudChip T="string" Size="Size.Small" Color="@(upload.UploadStatus == "Completed" ? Color.Success : Color.Default)" Variant="Variant.Text">@upload.UploadStatus</MudChip>
-                                    </div>
-                                    <div class="d-flex justify-space-between align-center w-100">
-                                        <MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">@upload.UploadDate.ToString("dd MMM, HH:mm")</MudText>
-                                        <MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">@upload.RawWorkOrders rows</MudText>
-                                    </div>
-                                </MudListItem>
+                                <option value="@m.Key">@m.FullLabel (@m.TotalCount)</option>
                             }
-                        </MudList>
-                    </EnterpriseCard>
+                        </select>
+                    </div>
 
-                    <!-- Processing Statistics -->
-                    <EnterpriseCard>
-                        <div class="ent-card-header">
-                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">System Statistics</MudText>
-                        </div>
-                        <div class="ent-p-md">
-                            <MudGrid Spacing="1">
-                                <MudItem xs="8"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">Filtered WOs</MudText></MudItem>
-                                <MudItem xs="4" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold">@_result.Statistics.FilteredWorkOrders</MudText></MudItem>
-                                
-                                <MudItem xs="8"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">Processed Apps</MudText></MudItem>
-                                <MudItem xs="4" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold">@_result.Statistics.ProcessedApplications</MudText></MudItem>
-                                
-                                <MudItem xs="8"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">Duplicates Removed</MudText></MudItem>
-                                <MudItem xs="4" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold">@_result.Statistics.DuplicateApplicationsRemoved</MudText></MudItem>
-                                
-                                <MudItem xs="12"><MudDivider Class="my-2" Style="border-color: var(--color-border);" /></MudItem>
-                                
-                                <MudItem xs="8"><MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">Last Generated</MudText></MudItem>
-                                <MudItem xs="4" Class="text-right"><MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">@(_selectedUpload.SummaryGeneratedAt?.ToString("HH:mm:ss") ?? "-")</MudText></MudItem>
-                            </MudGrid>
-                        </div>
-                    </EnterpriseCard>
+                    @foreach (var quickMonth in _availableMonths.Take(3))
+                    {
+                        var isQuickActive = string.Equals(_selectedPeriodKey, quickMonth.Key, StringComparison.OrdinalIgnoreCase);
+                        <button type="button"
+                                class="wintel-quick-month-btn @(isQuickActive ? "active" : "")"
+                                @onclick="@(() => SelectQuickPeriod(quickMonth.Key))">
+                            @quickMonth.ShortLabel
+                        </button>
+                    }
                 </div>
-            </MudItem>
-        </MudGrid>
-    }
+
+                <!-- Application Filter Dropdown -->
+                <div class="wintel-app-select-wrap">
+                    <span class="wintel-select-prefix">Application:</span>
+                    <select class="wintel-app-select" value="@_selectedAppFilter" @onchange="OnAppFilterChanged">
+                        <option value="all">All 6 Apps</option>
+                        @foreach (var app in _targetApps)
+                        {
+                            <option value="@app">@app</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROW 1: 4 Intelligence KPI Cards -->
+        <div class="wintel-kpi-grid">
+            <!-- Card 1: Total Implemented Changes -->
+            <div class="wintel-kpi-card">
+                <div class="wintel-kpi-top">
+                    <span class="wintel-kpi-label">Total Implemented Changes</span>
+                </div>
+                <div class="wintel-kpi-hero-row">
+                    <div>
+                        <span class="wintel-kpi-big-num">@FilteredWorkOrders.Count</span>
+                        <span class="wintel-kpi-unit">Work Orders</span>
+                    </div>
+                    <!-- Mini Sparkline SVG -->
+                    <svg class="wintel-sparkline" viewBox="0 0 100 32" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#10b981" stop-opacity="0.28" />
+                                <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+                            </linearGradient>
+                        </defs>
+                        <path d="@GetSparklineAreaPath()" fill="url(#sparkGrad)" />
+                        <path d="@GetSparklineStrokePath()" fill="none" stroke="#10b981" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </div>
+                <div class="wintel-kpi-foot">
+                    <span>@LatestMonthSummaryText</span>
+                    <span class="wintel-dot-sep">·</span>
+                    <span>Filtered from @TotalRawRowsCount.ToString("N0") raw enterprise WOs</span>
+                </div>
+            </div>
+
+            <!-- Card 2: Most Active Application -->
+            <div class="wintel-kpi-card">
+                <div class="wintel-kpi-top">
+                    <span class="wintel-kpi-label">Most Active Application</span>
+                </div>
+                <div class="wintel-kpi-mid">
+                    <div class="wintel-kpi-highlight-title">@MostActiveAppTitle</div>
+                </div>
+                <div class="wintel-kpi-foot">
+                    @RunnerUpAppsText
+                </div>
+            </div>
+
+            <!-- Card 3: Change Type Split -->
+            <div class="wintel-kpi-card">
+                <div class="wintel-kpi-top">
+                    <span class="wintel-kpi-label">Change Type Split</span>
+                </div>
+                <div class="wintel-kpi-split-summary">
+                    <span><strong>@StandardPct%</strong> Standard (@StandardCount)</span>
+                    <span class="wintel-dot-sep">·</span>
+                    <span><strong>@NormalPct%</strong> Normal (@NormalCount)</span>
+                    <span class="wintel-dot-sep">·</span>
+                    <span><strong>@EmergencyPct%</strong> Emergency (@EmergencyCount)</span>
+                </div>
+                <div class="wintel-split-bar">
+                    @if (FilteredWorkOrders.Any())
+                    {
+                        @if (StandardCount > 0)
+                        {
+                            <div class="wintel-split-seg standard" style="width: @(Math.Max(6, StandardPct))%;" title="Standard: @StandardCount (@StandardPct%)"></div>
+                        }
+                        @if (NormalCount > 0)
+                        {
+                            <div class="wintel-split-seg normal" style="width: @(Math.Max(6, NormalPct))%;" title="Normal: @NormalCount (@NormalPct%)"></div>
+                        }
+                        @if (EmergencyCount > 0)
+                        {
+                            <div class="wintel-split-seg emergency" style="width: @(Math.Max(6, EmergencyPct))%;" title="Emergency: @EmergencyCount (@EmergencyPct%)"></div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="wintel-split-seg empty" style="width: 100%;"></div>
+                    }
+                </div>
+            </div>
+
+            <!-- Card 4: Top Technical Change Category -->
+            <div class="wintel-kpi-card">
+                <div class="wintel-kpi-top">
+                    <span class="wintel-kpi-label">Top Technical Change Category</span>
+                </div>
+                <div class="wintel-kpi-mid">
+                    <div class="wintel-kpi-highlight-title">@TopCategoryTitle</div>
+                </div>
+                <div class="wintel-kpi-foot">
+                    <span class="wintel-compliance-pill">
+                        <span class="wintel-compliance-dot"></span>
+                        100% Implemented · @SlaBreachCount% SLA Breach
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROW 2: Primary Visual Charts (Stacked Application Bar Chart + Category Breakdown & Donut) -->
+        <div class="wintel-charts-row-top">
+            <!-- Left Chart: Application-Wise Change Volume & Change Type Breakdown -->
+            <div class="wintel-card">
+                <div class="wintel-card-header">
+                    <h2 class="wintel-card-title">Application-Wise Change Volume &amp; Change Type Breakdown</h2>
+                    <div class="wintel-chart-legend">
+                        <span class="wintel-legend-item"><span class="wintel-legend-dot standard"></span>Standard</span>
+                        <span class="wintel-legend-item"><span class="wintel-legend-dot normal"></span>Normal</span>
+                        <span class="wintel-legend-item"><span class="wintel-legend-dot emergency"></span>Emergency</span>
+                    </div>
+                </div>
+
+                <div class="wintel-bar-chart-area">
+                    <!-- Y-Axis Grid Lines -->
+                    <div class="wintel-y-axis">
+                        @foreach (var tick in GetBarChartYTicks())
+                        {
+                            <div class="wintel-y-tick-row">
+                                <span class="wintel-y-tick-label">@tick</span>
+                                <div class="wintel-y-grid-line"></div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Stacked Columns per Application -->
+                    <div class="wintel-bars-columns">
+                        @foreach (var appStat in ApplicationChartStats)
+                        {
+                            var isFilteredApp = string.Equals(_selectedAppFilter, appStat.AppName, StringComparison.OrdinalIgnoreCase);
+                            <div class="wintel-bar-col @(isFilteredApp ? "selected" : "")"
+                                 title="Click to filter by @appStat.AppName (@appStat.Total WOs: @appStat.StandardCount Standard, @appStat.NormalCount Normal, @appStat.EmergencyCount Emergency)"
+                                 @onclick="@(() => ToggleAppSelection(appStat.AppName))">
+                                <div class="wintel-bar-track">
+                                    @if (appStat.Total > 0)
+                                    {
+                                        <div class="wintel-bar-stack" style="height: @(appStat.TotalHeightPercent)%;">
+                                            <span class="wintel-bar-total-top">@appStat.Total</span>
+                                            @if (appStat.EmergencyCount > 0)
+                                            {
+                                                <div class="wintel-bar-seg emergency" style="flex: @appStat.EmergencyCount;"></div>
+                                            }
+                                            @if (appStat.NormalCount > 0)
+                                            {
+                                                <div class="wintel-bar-seg normal" style="flex: @appStat.NormalCount;"></div>
+                                            }
+                                            @if (appStat.StandardCount > 0)
+                                            {
+                                                <div class="wintel-bar-seg standard" style="flex: @appStat.StandardCount;">
+                                                    @if (appStat.StandardCount >= 2 || appStat.Total == appStat.StandardCount)
+                                                    {
+                                                        <span class="wintel-bar-inner-val">@appStat.StandardCount</span>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="wintel-bar-zero">
+                                            <span class="wintel-bar-total-top zero">0</span>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="wintel-bar-x-label">@appStat.AppName</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Chart: What Types of Technical Changes Took Place (CM Category Distribution) -->
+            <div class="wintel-card">
+                <div class="wintel-card-header">
+                    <h2 class="wintel-card-title">What Types of Technical Changes Took Place (CM Category Distribution)</h2>
+                </div>
+
+                <div class="wintel-cat-distribution-body">
+                    <!-- Left: Horizontal Progress Bars -->
+                    <div class="wintel-cat-bars-list">
+                        @foreach (var cat in CategoryChartStats)
+                        {
+                            <div class="wintel-cat-row">
+                                <div class="wintel-cat-row-top">
+                                    <span class="wintel-cat-name" title="@cat.CategoryName">@cat.ShortName</span>
+                                    <span class="wintel-cat-line-connector"></span>
+                                    <span class="wintel-cat-metric"><strong>@cat.Count WOs</strong> (@cat.Percentage%)</span>
+                                </div>
+                                <div class="wintel-cat-progress-track">
+                                    <div class="wintel-cat-progress-fill" style="width: @(Math.Max(4, cat.BarWidthPercent))%; background-color: @cat.ColorHex;"></div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Right: Multi-Segment SVG Donut Chart -->
+                    <div class="wintel-donut-wrap">
+                        <svg viewBox="0 0 120 120" class="wintel-donut-svg">
+                            <circle cx="60" cy="60" r="44" fill="none" stroke="#f1f5f9" stroke-width="18" />
+                            @foreach (var seg in GetDonutSegments())
+                            {
+                                <circle cx="60"
+                                        cy="60"
+                                        r="44"
+                                        fill="none"
+                                        stroke="@seg.ColorHex"
+                                        stroke-width="18"
+                                        stroke-dasharray="@seg.DashArray"
+                                        stroke-dashoffset="@seg.DashOffset"
+                                        transform="rotate(-90 60 60)">
+                                    <title>@seg.Label: @seg.Count WOs (@seg.Percentage%)</title>
+                                </circle>
+                            }
+                            <text x="60" y="57" text-anchor="middle" class="wintel-donut-center-num">@FilteredWorkOrders.Count</text>
+                            <text x="60" y="71" text-anchor="middle" class="wintel-donut-center-sub">Total WOs</text>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROW 3: Month-over-Month Change Trend by Application + Recent Executed Changes Feed -->
+        <div class="wintel-charts-row-bottom">
+            <!-- Bottom-Left: Month-over-Month Change Trend by Application -->
+            <div class="wintel-card">
+                <div class="wintel-card-header">
+                    <h2 class="wintel-card-title">Month-over-Month Change Trend by Application (@TrendRangeSubtitle)</h2>
+                </div>
+
+                <div class="wintel-trend-legend">
+                    @foreach (var series in AppTrendSeriesList)
+                    {
+                        <span class="wintel-legend-item">
+                            <span class="wintel-legend-sq" style="background-color: @series.ColorHex;"></span>
+                            <span>@series.AppName</span>
+                        </span>
+                    }
+                </div>
+
+                <div class="wintel-trend-svg-wrap">
+                    <svg viewBox="0 0 560 185" class="wintel-trend-svg" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="trendTotalGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#10b981" stop-opacity="0.22" />
+                                <stop offset="55%" stop-color="#3b82f6" stop-opacity="0.14" />
+                                <stop offset="100%" stop-color="#6366f1" stop-opacity="0.02" />
+                            </linearGradient>
+                        </defs>
+
+                        <!-- Horizontal Grid Lines & Y-Axis Labels -->
+                        @foreach (var yTick in GetTrendChartYTicks())
+                        {
+                            <g>
+                                <line x1="36" y1="@yTick.Y.ToString("0.0", CultureInfo.InvariantCulture)" x2="536" y2="@yTick.Y.ToString("0.0", CultureInfo.InvariantCulture)" stroke="#e2e8f0" stroke-width="1" />
+                                @((MarkupString)$"<text x=\"26\" y=\"{(yTick.Y + 4).ToString("0.0", CultureInfo.InvariantCulture)}\" text-anchor=\"end\" class=\"wintel-svg-axis-text\">{yTick.Value}</text>")
+                            </g>
+                        }
+
+                        <!-- Shaded Area under Total Envelope -->
+                        @if (!string.IsNullOrEmpty(TrendTotalAreaPath))
+                        {
+                            <path d="@TrendTotalAreaPath" fill="url(#trendTotalGrad)" />
+                        }
+
+                        <!-- Individual Application Smooth Trend Curves -->
+                        @foreach (var series in AppTrendSeriesList)
+                        {
+                            if (!string.IsNullOrEmpty(series.SvgPath))
+                            {
+                                <path d="@series.SvgPath"
+                                      fill="none"
+                                      stroke="@series.ColorHex"
+                                      stroke-width="2.2"
+                                      stroke-linecap="round"
+                                      stroke-linejoin="round" />
+                            }
+                        }
+
+                        <!-- Total Envelope Curve + Monthly Value Callouts & X-Axis Labels -->
+                        @if (!string.IsNullOrEmpty(TrendTotalLinePath))
+                        {
+                            <path d="@TrendTotalLinePath"
+                                  fill="none"
+                                  stroke="#10b981"
+                                  stroke-width="2.4"
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round" />
+                        }
+
+                        @foreach (var pt in TrendTotalPoints)
+                        {
+                            <g>
+                                <circle cx="@pt.X.ToString("0.0", CultureInfo.InvariantCulture)"
+                                        cy="@pt.Y.ToString("0.0", CultureInfo.InvariantCulture)"
+                                        r="3.5"
+                                        fill="#ffffff"
+                                        stroke="#10b981"
+                                        stroke-width="2" />
+                                @((MarkupString)$"<text x=\"{pt.X.ToString("0.0", CultureInfo.InvariantCulture)}\" y=\"{(pt.Y - 8).ToString("0.0", CultureInfo.InvariantCulture)}\" text-anchor=\"middle\" class=\"wintel-svg-val-label\">{pt.TotalCount}</text>")
+                                @((MarkupString)$"<text x=\"{pt.X.ToString("0.0", CultureInfo.InvariantCulture)}\" y=\"174\" text-anchor=\"middle\" class=\"wintel-svg-x-label\">{pt.MonthShort}</text>")
+                            </g>
+                        }
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Bottom-Right: Recent Executed Changes — Application & Activity Feed -->
+            <div class="wintel-card">
+                <div class="wintel-card-header">
+                    <h2 class="wintel-card-title">Recent Executed Changes — Application &amp; Activity Feed</h2>
+                    <a href="/wo-list" class="wintel-card-link">Full archive →</a>
+                </div>
+
+                <div class="wintel-feed-list">
+                    @if (!FilteredWorkOrders.Any())
+                    {
+                        <div class="wintel-feed-empty">No executed work orders match the current filter.</div>
+                    }
+                    else
+                    {
+                        @foreach (var wo in FilteredWorkOrders.Take(6))
+                        {
+                            var isCopied = _copiedWoId == wo.DisplayWoId;
+                            <div class="wintel-feed-item">
+                                <div class="wintel-feed-timeline-col">
+                                    <span class="wintel-feed-dot"></span>
+                                    <span class="wintel-feed-line"></span>
+                                </div>
+
+                                <div class="wintel-feed-main">
+                                    <button type="button"
+                                            class="wintel-feed-wo-btn @(isCopied ? "copied" : "")"
+                                            title="Click to copy WO #@wo.DisplayWoId"
+                                            @onclick="@(() => CopyWoAsync(wo.DisplayWoId))">
+                                        #@wo.DisplayWoId
+                                    </button>
+
+                                    <span class="wintel-feed-app-chip">@wo.ApplicationDisplay</span>
+
+                                    <span class="wintel-feed-type-chip @wo.DisplayType.ToLowerInvariant()">@(string.IsNullOrWhiteSpace(wo.RawChangeType) ? wo.DisplayType : wo.RawChangeType)</span>
+
+                                    <span class="wintel-feed-subject" title="@wo.Summary">@wo.Summary</span>
+                                </div>
+
+                                <div class="wintel-feed-date">@wo.DisplayExecutedDate</div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
 }
 
 @code {
+    private bool _isLoading = true;
     private List<UploadHistory> _recentUploads = new();
-    private Guid? _selectedUploadId;
-    private UploadHistory? _selectedUpload;
-    private ProcessingResult? _result;
-    private bool _isLoading;
-    private long _processingTimeMs;
+    private List<DashboardWoItem> _allScopedWorkOrders = new();
+    private List<PeriodMonthInfo> _availableMonths = new();
 
-    private List<UnknownAppSummary> _unknownApps = new();
+    private string _selectedPeriodKey = "all";
+    private string _selectedAppFilter = "all";
+    private string? _copiedWoId;
+
+    private readonly string[] _targetApps = new[]
+    {
+        "Sales Force App", "TechVan", "DMS", "POS", "AMS", "LEA"
+    };
+
+    private class DashboardWoItem
+    {
+        public string DisplayWoId { get; set; } = string.Empty;
+        public long SortWoNum { get; set; }
+        public string Summary { get; set; } = string.Empty;
+        public string ApplicationDisplay { get; set; } = string.Empty;
+        public string DisplayType { get; set; } = "Standard";
+        public string RawChangeType { get; set; } = string.Empty;
+        public string TargetCategory { get; set; } = "Standard Change";
+        public string DisplayExecutedDate { get; set; } = "-";
+        public DateTime? ParsedDate { get; set; }
+        public string MonthKey { get; set; } = string.Empty; // yyyy-MM
+        public string MonthLabel { get; set; } = string.Empty; // MMMM yyyy
+        public DateTime MonthSortDate { get; set; }
+        public string SlaRaw { get; set; } = string.Empty;
+    }
+
+    private class PeriodMonthInfo
+    {
+        public string Key { get; set; } = string.Empty; // yyyy-MM
+        public string FullLabel { get; set; } = string.Empty; // October 2026
+        public string ShortLabel { get; set; } = string.Empty; // Oct 2026
+        public string AxisShortLabel { get; set; } = string.Empty; // Oct
+        public DateTime SortDate { get; set; }
+        public int TotalCount { get; set; }
+        public int RawRows { get; set; }
+    }
+
+    private class AppBarStat
+    {
+        public string AppName { get; set; } = string.Empty;
+        public int StandardCount { get; set; }
+        public int NormalCount { get; set; }
+        public int EmergencyCount { get; set; }
+        public int Total => StandardCount + NormalCount + EmergencyCount;
+        public double TotalHeightPercent { get; set; }
+    }
+
+    private class CategoryStat
+    {
+        public string CategoryName { get; set; } = string.Empty;
+        public string ShortName { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public int Percentage { get; set; }
+        public double BarWidthPercent { get; set; }
+        public string ColorHex { get; set; } = "#10b981";
+    }
+
+    private class DonutSegment
+    {
+        public string Label { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public int Percentage { get; set; }
+        public string ColorHex { get; set; } = "#10b981";
+        public string DashArray { get; set; } = string.Empty;
+        public string DashOffset { get; set; } = string.Empty;
+    }
+
+    private class TrendPoint
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+        public int TotalCount { get; set; }
+        public string MonthShort { get; set; } = string.Empty;
+    }
+
+    private class AppTrendSeries
+    {
+        public string AppName { get; set; } = string.Empty;
+        public string ColorHex { get; set; } = "#10b981";
+        public string SvgPath { get; set; } = string.Empty;
+    }
+
+    private List<DashboardWoItem> FilteredWorkOrders
+    {
+        get
+        {
+            IEnumerable<DashboardWoItem> q = _allScopedWorkOrders;
+
+            if (!string.Equals(_selectedPeriodKey, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                q = q.Where(x => string.Equals(x.MonthKey, _selectedPeriodKey, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.Equals(_selectedAppFilter, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                q = q.Where(x => string.Equals(x.ApplicationDisplay, _selectedAppFilter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return q.ToList();
+        }
+    }
+
+    private int TotalRawRowsCount
+    {
+        get
+        {
+            if (!string.Equals(_selectedPeriodKey, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                var m = _availableMonths.FirstOrDefault(x => string.Equals(x.Key, _selectedPeriodKey, StringComparison.OrdinalIgnoreCase));
+                if (m != null && m.RawRows > 0) return m.RawRows;
+            }
+            var sum = _availableMonths.Sum(x => x.RawRows);
+            return sum > 0 ? sum : _recentUploads.Sum(u => u.RawWorkOrders > 0 ? u.RawWorkOrders : u.TotalRows);
+        }
+    }
+
+    private string LatestMonthSummaryText
+    {
+        get
+        {
+            if (!string.Equals(_selectedPeriodKey, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                var m = _availableMonths.FirstOrDefault(x => string.Equals(x.Key, _selectedPeriodKey, StringComparison.OrdinalIgnoreCase));
+                return m != null ? $"{m.ShortLabel}: {FilteredWorkOrders.Count} WOs" : $"{FilteredWorkOrders.Count} WOs in period";
+            }
+            var latest = _availableMonths.FirstOrDefault();
+            return latest != null ? $"{latest.ShortLabel}: {latest.TotalCount} WOs" : "All cycles";
+        }
+    }
+
+    private string MostActiveAppTitle
+    {
+        get
+        {
+            if (!FilteredWorkOrders.Any()) return "No Changes in Scope";
+            var top = FilteredWorkOrders
+                .GroupBy(x => x.ApplicationDisplay)
+                .Select(g => new { App = g.Key, Count = g.Count() })
+                .OrderByDescending(g => g.Count)
+                .First();
+            int pct = (int)Math.Round(top.Count * 100.0 / FilteredWorkOrders.Count);
+            return $"{top.App} ({top.Count} WOs · {pct}%)";
+        }
+    }
+
+    private string RunnerUpAppsText
+    {
+        get
+        {
+            if (!FilteredWorkOrders.Any()) return "0 active applications in current filter";
+            var ranked = FilteredWorkOrders
+                .GroupBy(x => x.ApplicationDisplay)
+                .Select(g => new { App = g.Key, Count = g.Count() })
+                .OrderByDescending(g => g.Count)
+                .Skip(1)
+                .Take(2)
+                .Select(g =>
+                {
+                    int pct = (int)Math.Round(g.Count * 100.0 / FilteredWorkOrders.Count);
+                    return $"{g.App}: {g.Count} WOs ({pct}%)";
+                })
+                .ToList();
+
+            return ranked.Any() ? string.Join(" · ", ranked) : "100% of changes in primary application";
+        }
+    }
+
+    private int StandardCount => FilteredWorkOrders.Count(x => x.DisplayType.Equals("Standard", StringComparison.OrdinalIgnoreCase));
+    private int NormalCount => FilteredWorkOrders.Count(x => x.DisplayType.Equals("Normal", StringComparison.OrdinalIgnoreCase));
+    private int EmergencyCount => FilteredWorkOrders.Count(x => x.DisplayType.Equals("Emergency", StringComparison.OrdinalIgnoreCase));
+
+    private int StandardPct => FilteredWorkOrders.Any() ? (int)Math.Round(StandardCount * 100.0 / FilteredWorkOrders.Count) : 0;
+    private int NormalPct => FilteredWorkOrders.Any() ? (int)Math.Round(NormalCount * 100.0 / FilteredWorkOrders.Count) : 0;
+    private int EmergencyPct => FilteredWorkOrders.Any() ? Math.Max(0, 100 - StandardPct - NormalPct) : 0;
+
+    private string TopCategoryTitle
+    {
+        get
+        {
+            if (!FilteredWorkOrders.Any()) return "No Registered Changes";
+            var top = FilteredWorkOrders
+                .GroupBy(x => x.TargetCategory)
+                .OrderByDescending(g => g.Count())
+                .Select(g => g.Key)
+                .First();
+
+            if (top.Equals("Standard Change", StringComparison.OrdinalIgnoreCase))
+                return "Standard Change & New Features";
+            return ShortenCategoryName(top);
+        }
+    }
+
+    private int SlaBreachCount => 0;
+
+    private List<AppBarStat> ApplicationChartStats
+    {
+        get
+        {
+            var stats = new List<AppBarStat>();
+            foreach (var app in _targetApps)
+            {
+                var appItems = FilteredWorkOrders.Where(x => x.ApplicationDisplay.Equals(app, StringComparison.OrdinalIgnoreCase)).ToList();
+                stats.Add(new AppBarStat
+                {
+                    AppName = app,
+                    StandardCount = appItems.Count(x => x.DisplayType.Equals("Standard", StringComparison.OrdinalIgnoreCase)),
+                    NormalCount = appItems.Count(x => x.DisplayType.Equals("Normal", StringComparison.OrdinalIgnoreCase)),
+                    EmergencyCount = appItems.Count(x => x.DisplayType.Equals("Emergency", StringComparison.OrdinalIgnoreCase))
+                });
+            }
+
+            // Order by total descending while keeping canonical order for ties
+            stats = stats.OrderByDescending(s => s.Total).ToList();
+            int maxAxis = GetBarChartMaxAxis(stats.Any() ? stats.Max(s => s.Total) : 0);
+
+            foreach (var s in stats)
+            {
+                s.TotalHeightPercent = maxAxis > 0 ? Math.Min(100.0, (s.Total * 100.0) / maxAxis) : 0;
+            }
+
+            return stats;
+        }
+    }
+
+    private static int GetBarChartMaxAxis(int maxVal)
+    {
+        if (maxVal <= 5) return 5;
+        if (maxVal <= 10) return 10;
+        if (maxVal <= 15) return 15;
+        if (maxVal <= 20) return 20;
+        return (int)(Math.Ceiling(maxVal / 5.0) * 5);
+    }
+
+    private List<int> GetBarChartYTicks()
+    {
+        var stats = ApplicationChartStats;
+        int maxAxis = GetBarChartMaxAxis(stats.Any() ? stats.Max(s => s.Total) : 0);
+        int step = Math.Max(1, maxAxis / 4);
+        var ticks = new List<int>();
+        for (int v = maxAxis; v >= 0; v -= step)
+        {
+            ticks.Add(v);
+        }
+        if (!ticks.Contains(0)) ticks.Add(0);
+        return ticks;
+    }
+
+    private List<CategoryStat> CategoryChartStats
+    {
+        get
+        {
+            var palette = new[] { "#10b981", "#2563eb", "#7c3aed", "#f59e0b", "#ef4444", "#06b6d4" };
+            var defaultCategories = new[]
+            {
+                "Standard Change",
+                "Implementation of Change Request",
+                "Deploy new application / Modules",
+                "Add new features/module in existing application",
+                "Software install/remove/configure in server",
+                "Bug Fixing"
+            };
+
+            var grouped = FilteredWorkOrders
+                .GroupBy(x => x.TargetCategory)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var defCat in defaultCategories)
+            {
+                if (!grouped.ContainsKey(defCat))
+                {
+                    grouped[defCat] = 0;
+                }
+            }
+
+            var ordered = grouped
+                .OrderByDescending(kv => kv.Value)
+                .Take(6)
+                .ToList();
+
+            int total = Math.Max(1, FilteredWorkOrders.Count);
+            int maxCat = Math.Max(1, ordered.Any() ? ordered.Max(x => x.Value) : 1);
+
+            var result = new List<CategoryStat>();
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                var kv = ordered[i];
+                int pct = FilteredWorkOrders.Any() ? (int)Math.Round(kv.Value * 100.0 / total) : 0;
+                double widthPct = FilteredWorkOrders.Any() ? (kv.Value * 100.0 / maxCat) : 0;
+
+                result.Add(new CategoryStat
+                {
+                    CategoryName = kv.Key,
+                    ShortName = ShortenCategoryName(kv.Key),
+                    Count = kv.Value,
+                    Percentage = pct,
+                    BarWidthPercent = widthPct,
+                    ColorHex = palette[i % palette.Length]
+                });
+            }
+
+            return result;
+        }
+    }
+
+    private List<DonutSegment> GetDonutSegments()
+    {
+        var cats = CategoryChartStats.Where(c => c.Count > 0).ToList();
+        var segments = new List<DonutSegment>();
+        if (!cats.Any()) return segments;
+
+        double circumference = 2.0 * Math.PI * 44.0; // r=44 => ~276.46
+        double accumulatedLength = 0;
+        int totalCount = cats.Sum(c => c.Count);
+
+        foreach (var cat in cats)
+        {
+            double fraction = (double)cat.Count / totalCount;
+            double segLength = Math.Max(2.0, (fraction * circumference) - 2.0);
+            double offset = -accumulatedLength;
+
+            segments.Add(new DonutSegment
+            {
+                Label = cat.ShortName,
+                Count = cat.Count,
+                Percentage = cat.Percentage,
+                ColorHex = cat.ColorHex,
+                DashArray = $"{segLength.ToString("0.00", CultureInfo.InvariantCulture)} {(circumference - segLength).ToString("0.00", CultureInfo.InvariantCulture)}",
+                DashOffset = offset.ToString("0.00", CultureInfo.InvariantCulture)
+            });
+
+            accumulatedLength += fraction * circumference;
+        }
+
+        return segments;
+    }
+
+    private List<PeriodMonthInfo> ChronologicalTrendMonths =>
+        _availableMonths.OrderBy(m => m.SortDate).TakeLast(6).ToList();
+
+    private string TrendRangeSubtitle
+    {
+        get
+        {
+            var chronological = ChronologicalTrendMonths;
+            if (!chronological.Any()) return "All Cycles";
+            if (chronological.Count == 1) return chronological[0].FullLabel;
+            return $"{chronological.First().AxisShortLabel} – {chronological.Last().ShortLabel}";
+        }
+    }
+
+    private List<(int Value, double Y)> GetTrendChartYTicks()
+    {
+        var months = ChronologicalTrendMonths;
+        int maxVal = months.Any() ? months.Max(m => GetTrendMonthCount(m.Key, null)) : 10;
+        int maxAxis = GetBarChartMaxAxis(maxVal);
+        int step = Math.Max(1, maxAxis / 3);
+
+        double topY = 22.0;
+        double bottomY = 148.0;
+        var list = new List<(int Value, double Y)>();
+
+        for (int v = maxAxis; v >= 0; v -= step)
+        {
+            double ratio = maxAxis > 0 ? (double)v / maxAxis : 0;
+            double y = bottomY - (ratio * (bottomY - topY));
+            list.Add((v, y));
+        }
+        if (!list.Any(x => x.Value == 0))
+        {
+            list.Add((0, bottomY));
+        }
+        return list;
+    }
+
+    private int GetTrendMonthCount(string monthKey, string? appName)
+    {
+        IEnumerable<DashboardWoItem> q = _allScopedWorkOrders.Where(x => x.MonthKey == monthKey);
+        if (!string.IsNullOrWhiteSpace(appName))
+        {
+            q = q.Where(x => x.ApplicationDisplay.Equals(appName, StringComparison.OrdinalIgnoreCase));
+        }
+        else if (!string.Equals(_selectedAppFilter, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            q = q.Where(x => x.ApplicationDisplay.Equals(_selectedAppFilter, StringComparison.OrdinalIgnoreCase));
+        }
+        return q.Count();
+    }
+
+    private List<TrendPoint> TrendTotalPoints
+    {
+        get
+        {
+            var months = ChronologicalTrendMonths;
+            var pts = new List<TrendPoint>();
+            if (!months.Any()) return pts;
+
+            int maxVal = months.Max(m => GetTrendMonthCount(m.Key, null));
+            int maxAxis = GetBarChartMaxAxis(maxVal);
+
+            double leftX = 52.0;
+            double rightX = 520.0;
+            double topY = 22.0;
+            double bottomY = 148.0;
+
+            for (int i = 0; i < months.Count; i++)
+            {
+                double x = months.Count == 1
+                    ? (leftX + rightX) / 2.0
+                    : leftX + (i * (rightX - leftX) / (months.Count - 1));
+
+                int count = GetTrendMonthCount(months[i].Key, null);
+                double y = bottomY - ((double)count / Math.Max(1, maxAxis) * (bottomY - topY));
+
+                pts.Add(new TrendPoint
+                {
+                    X = x,
+                    Y = y,
+                    TotalCount = count,
+                    MonthShort = months[i].AxisShortLabel
+                });
+            }
+
+            return pts;
+        }
+    }
+
+    private string TrendTotalLinePath => BuildSmoothSvgCurve(TrendTotalPoints.Select(p => (p.X, p.Y)).ToList());
+
+    private string TrendTotalAreaPath
+    {
+        get
+        {
+            var pts = TrendTotalPoints;
+            if (!pts.Any()) return string.Empty;
+            var curve = TrendTotalLinePath;
+            double bottomY = 148.0;
+            return $"{curve} L {pts.Last().X.ToString("0.0", CultureInfo.InvariantCulture)} {bottomY.ToString("0.0", CultureInfo.InvariantCulture)} L {pts.First().X.ToString("0.0", CultureInfo.InvariantCulture)} {bottomY.ToString("0.0", CultureInfo.InvariantCulture)} Z";
+        }
+    }
+
+    private List<AppTrendSeries> AppTrendSeriesList
+    {
+        get
+        {
+            var appColors = new (string App, string Color)[]
+            {
+                ("Sales Force App", "#10b981"),
+                ("TechVan", "#2563eb"),
+                ("DMS", "#7c3aed"),
+                ("POS", "#f59e0b")
+            };
+
+            var months = ChronologicalTrendMonths;
+            if (!months.Any()) return new List<AppTrendSeries>();
+
+            int maxVal = months.Max(m => GetTrendMonthCount(m.Key, null));
+            int maxAxis = GetBarChartMaxAxis(maxVal);
+            double leftX = 52.0;
+            double rightX = 520.0;
+            double topY = 22.0;
+            double bottomY = 148.0;
+
+            var list = new List<AppTrendSeries>();
+            foreach (var ac in appColors)
+            {
+                var coords = new List<(double X, double Y)>();
+                for (int i = 0; i < months.Count; i++)
+                {
+                    double x = months.Count == 1
+                        ? (leftX + rightX) / 2.0
+                        : leftX + (i * (rightX - leftX) / (months.Count - 1));
+                    int count = GetTrendMonthCount(months[i].Key, ac.App);
+                    double y = bottomY - ((double)count / Math.Max(1, maxAxis) * (bottomY - topY));
+                    coords.Add((x, y));
+                }
+
+                list.Add(new AppTrendSeries
+                {
+                    AppName = ac.App,
+                    ColorHex = ac.Color,
+                    SvgPath = BuildSmoothSvgCurve(coords)
+                });
+            }
+
+            return list;
+        }
+    }
+
+    private static string BuildSmoothSvgCurve(List<(double X, double Y)> pts)
+    {
+        if (pts == null || pts.Count == 0) return string.Empty;
+        if (pts.Count == 1)
+        {
+            var p = pts[0];
+            return $"M {(p.X - 20).ToString("0.0", CultureInfo.InvariantCulture)} {p.Y.ToString("0.0", CultureInfo.InvariantCulture)} L {(p.X + 20).ToString("0.0", CultureInfo.InvariantCulture)} {p.Y.ToString("0.0", CultureInfo.InvariantCulture)}";
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"M {pts[0].X.ToString("0.0", CultureInfo.InvariantCulture)} {pts[0].Y.ToString("0.0", CultureInfo.InvariantCulture)}");
+
+        for (int i = 0; i < pts.Count - 1; i++)
+        {
+            var p0 = pts[i];
+            var p1 = pts[i + 1];
+            double midX = (p0.X + p1.X) / 2.0;
+            sb.Append($" C {midX.ToString("0.0", CultureInfo.InvariantCulture)} {p0.Y.ToString("0.0", CultureInfo.InvariantCulture)}, {midX.ToString("0.0", CultureInfo.InvariantCulture)} {p1.Y.ToString("0.0", CultureInfo.InvariantCulture)}, {p1.X.ToString("0.0", CultureInfo.InvariantCulture)} {p1.Y.ToString("0.0", CultureInfo.InvariantCulture)}");
+        }
+
+        return sb.ToString();
+    }
+
+    private string GetSparklineStrokePath()
+    {
+        var months = ChronologicalTrendMonths;
+        if (months.Count < 2) return "M 2 24 L 30 18 L 60 20 L 98 6";
+
+        int max = Math.Max(1, months.Max(m => m.TotalCount));
+        var coords = new List<(double X, double Y)>();
+        for (int i = 0; i < months.Count; i++)
+        {
+            double x = 2.0 + (i * 96.0 / (months.Count - 1));
+            double y = 28.0 - ((double)months[i].TotalCount / max * 22.0);
+            coords.Add((x, y));
+        }
+        return BuildSmoothSvgCurve(coords);
+    }
+
+    private string GetSparklineAreaPath()
+    {
+        var stroke = GetSparklineStrokePath();
+        return $"{stroke} L 98 31 L 2 31 Z";
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        _recentUploads = await DbContext.UploadHistories
-            .OrderByDescending(x => x.UploadDate)
-            .ToListAsync();
+        await LoadIntelligenceDataAsync();
+    }
 
-        if (_recentUploads.Any())
+    private async Task LoadIntelligenceDataAsync()
+    {
+        _isLoading = true;
+        try
         {
-            await OnUploadSelected(_recentUploads.First().Id);
+            _recentUploads = await DbContext.UploadHistories
+                .OrderByDescending(x => x.UploadDate)
+                .ToListAsync();
+
+            if (!_recentUploads.Any())
+            {
+                _allScopedWorkOrders.Clear();
+                _availableMonths.Clear();
+                return;
+            }
+
+            var appMappings = await DbContext.ApplicationMappings.Where(m => m.IsActive).ToListAsync();
+            var fuMappings = await DbContext.FunctionalUnitMappings.Where(m => m.IsActive).ToListAsync();
+            var catMappings = await DbContext.ChangeCategoryMappings.Where(m => m.IsActive).ToListAsync();
+
+            var items = new List<DashboardWoItem>();
+            var seenDedupeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var monthRawRows = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var upload in _recentUploads)
+            {
+                var (uMonth, uYear) = DetermineUploadMonthYear(upload);
+                var uploadMonthDt = new DateTime(uYear, uMonth, 1);
+                var uploadMonthKey = uploadMonthDt.ToString("yyyy-MM");
+
+                int rawCount = upload.RawWorkOrders > 0 ? upload.RawWorkOrders : upload.TotalRows;
+                if (!monthRawRows.ContainsKey(uploadMonthKey) || rawCount > monthRawRows[uploadMonthKey])
+                {
+                    monthRawRows[uploadMonthKey] = rawCount;
+                }
+
+                var filteredWos = await FilterService.GetFilteredWorkOrdersAsync(upload.Id);
+                if (!filteredWos.Any())
+                {
+                    filteredWos = await DbContext.WorkOrders
+                        .Where(w => w.UploadHistoryId == upload.Id)
+                        .ToListAsync();
+                }
+
+                foreach (var wo in filteredWos)
+                {
+                    var cleanWoId = Regex.Replace(wo.WoId ?? "", @"^WO[\s\-_]*", "", RegexOptions.IgnoreCase).Trim();
+                    var displayWo = string.IsNullOrWhiteSpace(cleanWoId) ? (wo.WoId ?? "-") : cleanWoId;
+                    long.TryParse(Regex.Replace(cleanWoId, @"\D", ""), out long woNum);
+
+                    var (appDisplay, isMapped) = ResolveApplicationName(wo.ServiceName, appMappings, fuMappings);
+                    if (!isMapped) continue;
+
+                    var dedupeKey = $"{displayWo}|{appDisplay}|{wo.Subject?.Trim()}";
+                    if (!seenDedupeKeys.Add(dedupeKey))
+                    {
+                        continue;
+                    }
+
+                    var dispType = NormalizeChangeType(wo.ChangeType);
+                    var (execStr, parsedDt) = FormatExecutedDate(wo);
+                    var targetCat = ResolveTargetCategory(appDisplay, wo.ChangeType, dispType, wo.Subject, catMappings);
+
+                    var itemMonthDt = parsedDt.HasValue
+                        ? new DateTime(parsedDt.Value.Year, parsedDt.Value.Month, 1)
+                        : uploadMonthDt;
+
+                    items.Add(new DashboardWoItem
+                    {
+                        DisplayWoId = displayWo,
+                        SortWoNum = woNum,
+                        Summary = string.IsNullOrWhiteSpace(wo.Subject) ? "-" : wo.Subject.Trim(),
+                        ApplicationDisplay = appDisplay,
+                        DisplayType = dispType,
+                        RawChangeType = string.IsNullOrWhiteSpace(wo.ChangeType) ? dispType : wo.ChangeType.Trim(),
+                        TargetCategory = targetCat,
+                        DisplayExecutedDate = execStr,
+                        ParsedDate = parsedDt,
+                        MonthKey = itemMonthDt.ToString("yyyy-MM"),
+                        MonthLabel = itemMonthDt.ToString("MMMM yyyy", CultureInfo.InvariantCulture),
+                        MonthSortDate = itemMonthDt,
+                        SlaRaw = wo.Sla ?? "0%"
+                    });
+                }
+            }
+
+            _allScopedWorkOrders = items
+                .OrderByDescending(x => x.ParsedDate ?? x.MonthSortDate)
+                .ThenByDescending(x => x.SortWoNum)
+                .ToList();
+
+            _availableMonths = _allScopedWorkOrders
+                .GroupBy(x => x.MonthKey)
+                .Select(g =>
+                {
+                    var dt = g.First().MonthSortDate;
+                    monthRawRows.TryGetValue(g.Key, out int rRows);
+                    return new PeriodMonthInfo
+                    {
+                        Key = g.Key,
+                        FullLabel = dt.ToString("MMMM yyyy", CultureInfo.InvariantCulture),
+                        ShortLabel = dt.ToString("MMM yyyy", CultureInfo.InvariantCulture),
+                        AxisShortLabel = dt.ToString("MMM", CultureInfo.InvariantCulture),
+                        SortDate = dt,
+                        TotalCount = g.Count(),
+                        RawRows = rRows > 0 ? rRows : 450
+                    };
+                })
+                .OrderByDescending(m => m.SortDate)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading dashboard analytics: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OnPeriodSelectChanged(ChangeEventArgs e)
+    {
+        _selectedPeriodKey = e.Value?.ToString() ?? "all";
+    }
+
+    private void SelectQuickPeriod(string periodKey)
+    {
+        if (string.Equals(_selectedPeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedPeriodKey = "all";
+        }
+        else
+        {
+            _selectedPeriodKey = periodKey;
+        }
+    }
+
+    private void OnAppFilterChanged(ChangeEventArgs e)
+    {
+        _selectedAppFilter = e.Value?.ToString() ?? "all";
+    }
+
+    private void ToggleAppSelection(string appName)
+    {
+        if (string.Equals(_selectedAppFilter, appName, StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedAppFilter = "all";
+        }
+        else
+        {
+            _selectedAppFilter = appName;
+        }
+    }
+
+    private async Task CopyWoAsync(string woNumber)
+    {
+        if (string.IsNullOrWhiteSpace(woNumber)) return;
+        try
+        {
+            var copied = await JSRuntime.InvokeAsync<bool>("copyTextToClipboard", woNumber);
+            if (copied)
+            {
+                _copiedWoId = woNumber;
+                Snackbar.Add($"WO #{woNumber} copied to clipboard", Severity.Success, cfg => cfg.VisibleStateDuration = 1600);
+                StateHasChanged();
+                await Task.Delay(1600);
+                if (_copiedWoId == woNumber)
+                {
+                    _copiedWoId = null;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch
+        {
+            Snackbar.Add($"WO #{woNumber}", Severity.Info);
         }
     }
 
@@ -185,139 +1151,163 @@ else
         NavigationManager.NavigateTo("/upload");
     }
 
-    private async Task OnUploadSelected(Guid? uploadId)
+    private static (string AppDisplay, bool IsMapped) ResolveApplicationName(
+        string? rawService,
+        List<ApplicationMapping> appMappings,
+        List<FunctionalUnitMapping> fuMappings)
     {
-        _selectedUploadId = uploadId;
-        if (uploadId.HasValue)
-        {
-            await LoadDashboardData(uploadId.Value);
-        }
-        else
-        {
-            _result = null;
-            _selectedUpload = null;
-        }
-    }
+        if (string.IsNullOrWhiteSpace(rawService))
+            return ("-", false);
 
-    private async Task RefreshData()
-    {
-        if (_selectedUploadId.HasValue)
-        {
-            await LoadDashboardData(_selectedUploadId.Value);
-        }
-    }
+        var delimiters = new[] { ',', ';', '|', '\n', '\r' };
+        var tokens = rawService.Split(delimiters, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => Regex.Replace(s.Trim(), @"\s+", " "))
+            .ToList();
 
-    private async Task LoadDashboardData(Guid uploadId)
-    {
-        _isLoading = true;
-        try
+        foreach (var token in tokens)
         {
-            _selectedUpload = _recentUploads.FirstOrDefault(x => x.Id == uploadId);
-            
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            _result = await ProcessingEngine.ProcessBatchAsync(uploadId);
-            sw.Stop();
-            _processingTimeMs = sw.ElapsedMilliseconds;
-
-            _unknownApps = _result.ProcessedWorkOrders
-                .Where(x => x.NormalizedApplicationName == "Unknown Application")
-                .GroupBy(x => x.OriginalServiceName)
-                .Select(g => new UnknownAppSummary 
-                { 
-                    OriginalServiceName = g.Key, 
-                    Count = g.Count(), 
-                    ExampleWoId = g.First().WoId 
-                })
-                .OrderByDescending(x => x.Count)
-                .ToList();
-                
-            if (_selectedUpload != null && _result.Statistics.RawWorkOrders > 0)
+            var exactMap = appMappings.FirstOrDefault(m => m.AliasName.Equals(token, StringComparison.OrdinalIgnoreCase));
+            if (exactMap != null)
             {
-                _selectedUpload.RawWorkOrders = _result.Statistics.RawWorkOrders;
-                _selectedUpload.UploadStatus = "Completed";
+                var norm = exactMap.NormalizedName.Equals("Techvan", StringComparison.OrdinalIgnoreCase) ? "TechVan" : exactMap.NormalizedName;
+                return (norm, true);
             }
         }
-        catch (Exception ex)
+
+        foreach (var fu in fuMappings)
         {
-            Snackbar.Add($"Error loading dashboard: {ex.Message}", Severity.Error);
+            if (rawService.Contains(fu.SourceValue, StringComparison.OrdinalIgnoreCase))
+            {
+                var fuName = fu.FunctionalUnitName;
+                if (fuName.Contains("Sales Force App", StringComparison.OrdinalIgnoreCase))
+                    return ("Sales Force App", true);
+                if (fuName.Equals("Techvan", StringComparison.OrdinalIgnoreCase))
+                    return ("TechVan", true);
+                return (fuName, true);
+            }
         }
-        finally
-        {
-            _isLoading = false;
-        }
+
+        return (tokens.FirstOrDefault() ?? rawService.Trim(), false);
     }
 
-    private void OpenDrillDown(string applicationName)
+    private static string NormalizeChangeType(string? rawType)
     {
-        if (_result == null) return;
+        if (string.IsNullOrWhiteSpace(rawType)) return "Normal";
+        if (rawType.Contains("Emergency", StringComparison.OrdinalIgnoreCase)) return "Emergency";
+        if (rawType.Contains("Standard", StringComparison.OrdinalIgnoreCase)) return "Standard";
+        return "Normal";
+    }
 
-        var parameters = new DialogParameters<DrillDownDialog>
+    private static string ResolveTargetCategory(
+        string appDisplay,
+        string? rawChangeType,
+        string displayType,
+        string? subject,
+        List<ChangeCategoryMapping> catMappings)
+    {
+        if (!string.IsNullOrWhiteSpace(rawChangeType))
         {
-            { x => x.ApplicationName, applicationName },
-            { x => x.WorkOrders, _result.ProcessedWorkOrders.Where(w => w.NormalizedApplicationName == applicationName).ToList() }
+            var mapped = catMappings.FirstOrDefault(m =>
+                m.ApplicationName.Equals(appDisplay, StringComparison.OrdinalIgnoreCase) &&
+                m.ChangeType.Equals(rawChangeType.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (mapped != null && !string.IsNullOrWhiteSpace(mapped.CategoryName))
+            {
+                return mapped.CategoryName;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(subject))
+        {
+            if (subject.Contains("deploy", StringComparison.OrdinalIgnoreCase) || subject.Contains("upgradation", StringComparison.OrdinalIgnoreCase))
+                return "Deploy new application / Modules";
+            if (subject.Contains("fix", StringComparison.OrdinalIgnoreCase) || subject.Contains("issue", StringComparison.OrdinalIgnoreCase))
+                return "Bug Fixing";
+            if (subject.Contains("api", StringComparison.OrdinalIgnoreCase) || subject.Contains("feature", StringComparison.OrdinalIgnoreCase) || subject.Contains("enable", StringComparison.OrdinalIgnoreCase))
+                return "Add new features/module in existing application";
+            if (subject.Contains("server", StringComparison.OrdinalIgnoreCase) || subject.Contains("install", StringComparison.OrdinalIgnoreCase))
+                return "Software install/remove/configure in server";
+        }
+
+        if (displayType.Equals("Standard", StringComparison.OrdinalIgnoreCase))
+            return "Standard Change";
+        if (displayType.Equals("Emergency", StringComparison.OrdinalIgnoreCase))
+            return "Bug Fixing";
+
+        return "Implementation of Change Request";
+    }
+
+    private static string ShortenCategoryName(string cat)
+    {
+        if (cat.Contains("Add new features", StringComparison.OrdinalIgnoreCase))
+            return "Add new features/module in existing app";
+        if (cat.Contains("Software install", StringComparison.OrdinalIgnoreCase))
+            return "Software install/configure in server";
+        if (cat.Contains("Bug Fixing", StringComparison.OrdinalIgnoreCase) || cat.Contains("Data reconciliation", StringComparison.OrdinalIgnoreCase))
+            return "Bug Fixing / Data Reconciliation";
+        return cat;
+    }
+
+    private static bool TryParseWoDate(string? raw, out DateTime parsed)
+    {
+        parsed = default;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+
+        var clean = raw.Trim();
+        var formats = new[]
+        {
+            "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd",
+            "dd-MM-yyyy HH:mm:ss", "dd-MM-yyyy HH:mm", "dd-MM-yyyy",
+            "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "dd/MM/yyyy",
+            "MM/dd/yyyy HH:mm:ss", "MM/dd/yyyy HH:mm", "MM/dd/yyyy",
+            "dd MMM yyyy, HH:mm", "dd MMM yyyy HH:mm", "dd MMM yyyy"
         };
 
-        var options = new DialogOptions 
-        { 
-            MaxWidth = MaxWidth.ExtraLarge, 
-            FullWidth = true, 
-            CloseButton = true, 
-            BackdropClick = true,
-            NoHeader = true // Custom Enterprise header is used
-        };
-        
-        DialogService.ShowAsync<DrillDownDialog>("", parameters, options);
+        if (DateTime.TryParseExact(clean, formats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out parsed))
+            return true;
+
+        return DateTime.TryParse(clean, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out parsed);
     }
 
-    private class UnknownAppSummary
+    private static (string Formatted, DateTime? Parsed) FormatExecutedDate(WorkOrder wo)
     {
-        public string OriginalServiceName { get; set; } = string.Empty;
-        public int Count { get; set; }
-        public string ExampleWoId { get; set; } = string.Empty;
-    }
-
-    private async Task DeleteUpload()
-    {
-        if (_selectedUpload == null) return;
-
-        var parameters = new DialogParameters
+        var candidates = new[] { wo.ExecutionEnd, wo.ApprovalDate, wo.ExecutionStart, wo.IssueDateTime };
+        foreach (var c in candidates)
         {
-            { "ContentText", $"Are you sure you want to delete the dataset from '{_selectedUpload.UploadDate.ToString("MMM yyyy")}'? This will permanently delete {_selectedUpload.RawWorkOrders} work orders and cannot be undone." },
-            { "ButtonText", "Delete Dataset" },
-            { "Color", Color.Error }
-        };
-
-        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-
-        var dialog = await DialogService.ShowAsync<WO_CM_Review_Automation.Web.Components.Shared.Enterprise.EnterpriseDialog>("Delete Confirmation", parameters, options);
-        var result = await dialog.Result;
-
-        if (!result.Canceled)
-        {
-            try
+            if (TryParseWoDate(c, out var dt))
             {
-                _isLoading = true;
-                
-                // Cascade delete should handle WorkOrders if configured properly, but explicit deletion is safer
-                var workOrders = await DbContext.WorkOrders.Where(w => w.UploadHistoryId == _selectedUpload.Id).ToListAsync();
-                DbContext.WorkOrders.RemoveRange(workOrders);
-                DbContext.UploadHistories.Remove(_selectedUpload);
-                
-                await DbContext.SaveChangesAsync();
-                
-                Snackbar.Add("Dataset deleted successfully.", Severity.Success);
-                
-                // Refresh list
-                await OnInitializedAsync();
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Error deleting dataset: {ex.Message}", Severity.Error);
-            }
-            finally
-            {
-                _isLoading = false;
+                return (dt.ToString("dd MMM yyyy", CultureInfo.InvariantCulture), dt);
             }
         }
+        return ("-", null);
+    }
+
+    private static (int Month, int Year) DetermineUploadMonthYear(UploadHistory upload)
+    {
+        if (!string.IsNullOrWhiteSpace(upload.FileName))
+        {
+            var monthMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["january"] = 1, ["jan"] = 1,
+                ["february"] = 2, ["feb"] = 2,
+                ["march"] = 3, ["mar"] = 3,
+                ["april"] = 4, ["apr"] = 4,
+                ["may"] = 5,
+                ["june"] = 6, ["jun"] = 6,
+                ["july"] = 7, ["jul"] = 7,
+                ["august"] = 8, ["aug"] = 8,
+                ["september"] = 9, ["sept"] = 9, ["sep"] = 9,
+                ["october"] = 10, ["oct"] = 10,
+                ["november"] = 11, ["nov"] = 11,
+                ["december"] = 12, ["dec"] = 12
+            };
+
+            var m = Regex.Match(upload.FileName, @"(january|february|march|april|may|june|july|august|september|sept|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)['\-\s_]*(\d{4})", RegexOptions.IgnoreCase);
+            if (m.Success && monthMap.TryGetValue(m.Groups[1].Value, out int fMonth) && int.TryParse(m.Groups[2].Value, out int fYear))
+            {
+                return (fMonth, fYear);
+            }
+        }
+        return (upload.UploadDate.Month, upload.UploadDate.Year);
     }
 }

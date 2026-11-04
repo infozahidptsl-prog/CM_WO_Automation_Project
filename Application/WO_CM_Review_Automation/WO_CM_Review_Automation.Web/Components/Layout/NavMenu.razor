@@ -1,33 +1,30 @@
-<MudNavMenu Class="ent-nav-item mt-4">
-    <div class="px-6 mb-2">
-        <MudText Typo="Typo.overline" Style="color: var(--color-text-tertiary); font-weight: 700; letter-spacing: 1px;">WORKSPACE</MudText>
-    </div>
-    
-    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard" Class="mb-1">Dashboard</MudNavLink>
-    <MudNavLink Href="/upload" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CloudUpload" Class="mb-4">Upload Excel</MudNavLink>
-    
-    <div class="px-6 mt-6 mb-2">
-        <MudText Typo="Typo.overline" Style="color: var(--color-text-tertiary); font-weight: 700; letter-spacing: 1px;">DATA VIEWS</MudText>
-    </div>
-    
-    <MudNavLink Href="/wo-list" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ListAlt" Class="mb-1">WO Master List</MudNavLink>
-    <MudNavLink Href="/reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Assessment" Class="mb-4">Monthly Reports</MudNavLink>
+<MudNavMenu Class="ent-nav-item mt-2">
+    <div class="ent-nav-section-title">Workspace</div>
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.GridView" Class="mb-3">Dashboard</MudNavLink>
 
-    <div class="px-6 mt-6 mb-2">
-        <MudText Typo="Typo.overline" Style="color: var(--color-text-tertiary); font-weight: 700; letter-spacing: 1px;">DOCUMENT STUDIO</MudText>
-    </div>
+    <div class="ent-nav-section-title">Data</div>
+    <MudNavLink Href="/wo-list" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.TableChart" Class="mb-3">Work Order Archive</MudNavLink>
 
-    <MudNavGroup Title="CM Review" Icon="@Icons.Material.Filled.DocumentScanner" Expanded="true" Class="mb-4">
-        <MudNavLink Href="/cm-reviews" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.List" Class="mb-1">Document List</MudNavLink>
-        <MudNavLink Href="/cm-review/document-preparation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Edit">Document Preparation</MudNavLink>
-    </MudNavGroup>
-    
-    <div class="px-6 mt-6 mb-2">
-        <MudText Typo="Typo.overline" Style="color: var(--color-text-tertiary); font-weight: 700; letter-spacing: 1px;">SYSTEM</MudText>
-    </div>
-    
-    <MudNavLink Href="/mappings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Tune" Class="mb-1">Mapping Configuration</MudNavLink>
-    <MudNavLink Href="/history" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.History" Class="mb-1">Upload History</MudNavLink>
-    <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+    <div class="ent-nav-section-title">Work Order Studio</div>
+    <MudNavLink Href="/reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Description" Class="mb-3">WO Count</MudNavLink>
 
+    <div class="ent-nav-section-title">CM Review studio</div>
+    <MudNavLink Href="/cm-reviews" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Article" Class="mb-3 ent-nav-with-badge">
+        <div class="d-flex justify-space-between align-center w-100">
+            <span>CM Review Document</span>
+            @if (PendingDocumentsCount > 0)
+            {
+                <span class="ent-nav-badge">@PendingDocumentsCount</span>
+            }
+        </div>
+    </MudNavLink>
+
+    <div class="ent-nav-section-title">System</div>
+    <MudNavLink Href="/mappings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Tune" Class="mb-1">Mapping</MudNavLink>
+    <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Settings">Settings</MudNavLink>
 </MudNavMenu>
+
+@code {
+    [Parameter]
+    public int PendingDocumentsCount { get; set; } = 3;
+}

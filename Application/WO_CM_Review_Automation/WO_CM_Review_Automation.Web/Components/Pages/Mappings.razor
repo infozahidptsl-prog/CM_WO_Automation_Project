@@ -4,173 +4,424 @@
 @inject IMappingService MappingService
 @inject ISnackbar Snackbar
 
-<PageTitle>Mapping Management - WO CM Review</PageTitle>
+<PageTitle>Mapping Configuration - WO CM Review</PageTitle>
 
-<EnterprisePageHeader Title="Mapping Configuration" Subtitle="Manage Functional Unit and Team Leader mappings for report generation" />
+<div class="mapcfg-page">
+    <!-- Header -->
+    <div class="mapcfg-header">
+        <div>
+            <h1 class="mapcfg-title">Mapping configuration</h1>
+            <p class="mapcfg-subtitle">Configure how imported work orders map to applications, functional units, POC owners, and CM categories.</p>
+        </div>
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-6 mb-16">
-    <EnterpriseCard Class="pa-0">
-        <MudTabs ApplyEffectsToContainer="true">
-        
-        <MudTabPanel Text="Application Mappings" Class="ent-p-md">
-            <MudTable T="ApplicationMapping" Items="@_applicationMappings" 
-                      Hover="true" Dense="true" Striped="true" Class="ent-table"
-                      RowEditCommit="CommittedAppChanges" RowEditCancel="CanceledEditingApp"
-                      ApplyButtonPosition="TableApplyButtonPosition.End" EditButtonPosition="TableEditButtonPosition.End" EditTrigger="TableEditTrigger.EditButton">
-                <ToolBarContent>
-                    <MudText Typo="Typo.h6">Applications</MudText>
-                    <MudSpacer />
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Add" OnClick="AddApplication">Add New</MudButton>
-                </ToolBarContent>
-                <HeaderContent>
-                    <MudTh>Normalized Name (Dropdown)</MudTh>
-                    <MudTh>Alias / Source Keyword</MudTh>
-                    <MudTh>Is Active</MudTh>
-                    <MudTh></MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Normalized Name">@context.NormalizedName</MudTd>
-                    <MudTd DataLabel="Alias Name">@context.AliasName</MudTd>
-                    <MudTd DataLabel="Is Active">@(context.IsActive ? "Yes" : "No")</MudTd>
-                    <MudTd>
-                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="@(() => DeleteApplication(context))" />
-                    </MudTd>
-                </RowTemplate>
-                <RowEditingTemplate>
-                    <MudTd DataLabel="Normalized Name">
-                        <MudTextField @bind-Value="context.NormalizedName" Required="true" />
-                    </MudTd>
-                    <MudTd DataLabel="Alias Name">
-                        <MudTextField @bind-Value="context.AliasName" Required="true" />
-                    </MudTd>
-                    <MudTd DataLabel="Is Active">
-                        <MudSwitch T="bool" @bind-Checked="context.IsActive" Color="Color.Primary" />
-                    </MudTd>
-                    <MudTd></MudTd>
-                </RowEditingTemplate>
-            </MudTable>
-        </MudTabPanel>
+        <div class="d-flex align-center" style="gap: 8px;">
+            <button type="button" class="dash-btn-primary" @onclick="AddRuleForActiveTab">
+                <MudIcon Icon="@Icons.Material.Outlined.Add" Style="font-size: 16px;" />
+                <span>@GetAddButtonText()</span>
+            </button>
+        </div>
+    </div>
 
-        <MudTabPanel Text="Functional Unit Mappings" Class="ent-p-md">
-            <MudTable T="FunctionalUnitMapping" Items="@_functionalUnitMappings" 
-                      Hover="true" Dense="true" Striped="true" Class="ent-table"
-                      RowEditCommit="CommittedFUChanges" RowEditCancel="CanceledEditingFU"
-                      ApplyButtonPosition="TableApplyButtonPosition.End" EditButtonPosition="TableEditButtonPosition.End" EditTrigger="TableEditTrigger.EditButton">
-                <ToolBarContent>
-                    <MudText Typo="Typo.h6">Functional Units</MudText>
-                    <MudSpacer />
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Add" OnClick="AddFunctionalUnit">Add New</MudButton>
-                </ToolBarContent>
-                <HeaderContent>
-                    <MudTh>Source Keyword / Service Name</MudTh>
-                    <MudTh>Assigned Functional Unit</MudTh>
-                    <MudTh></MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Source Keyword">@context.SourceValue</MudTd>
-                    <MudTd DataLabel="Functional Unit">@context.FunctionalUnitName</MudTd>
-                    <MudTd>
-                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="@(() => DeleteFunctionalUnit(context))" />
-                    </MudTd>
-                </RowTemplate>
-                <RowEditingTemplate>
-                    <MudTd DataLabel="Source Keyword">
-                        <MudTextField @bind-Value="context.SourceValue" Required="true" />
-                    </MudTd>
-                    <MudTd DataLabel="Functional Unit">
-                        <MudTextField @bind-Value="context.FunctionalUnitName" Required="true" />
-                    </MudTd>
-                    <MudTd></MudTd>
-                </RowEditingTemplate>
-            </MudTable>
-        </MudTabPanel>
+    <!-- Summary KPI Cards (Clickable to switch tabs) -->
+    <div class="mapcfg-stats-grid">
+        <button type="button" class="mapcfg-stat-card @(_activeTab == 0 ? "active" : "")" @onclick='() => SetActiveTab(0)'>
+            <div class="mapcfg-stat-top">
+                <span class="mapcfg-stat-label">Applications</span>
+                <span class="mapcfg-stat-badge">@_applicationMappings.Count(x => x.IsActive) active</span>
+            </div>
+            <div class="mapcfg-stat-value">@_applicationMappings.Count</div>
+            <div class="mapcfg-stat-desc">Keyword aliases to canonical app names</div>
+        </button>
 
-        <MudTabPanel Text="Team Leader Mappings" Class="ent-p-md">
-            <MudTable T="TeamLeaderMapping" Items="@_teamLeaderMappings" 
-                      Hover="true" Dense="true" Striped="true" Class="ent-table"
-                      RowEditCommit="CommittedTLChanges" RowEditCancel="CanceledEditingTL"
-                      ApplyButtonPosition="TableApplyButtonPosition.End" EditButtonPosition="TableEditButtonPosition.End" EditTrigger="TableEditTrigger.EditButton">
-                <ToolBarContent>
-                    <MudText Typo="Typo.h6">Team Leaders</MudText>
-                    <MudSpacer />
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Add" OnClick="AddTeamLeader">Add New</MudButton>
-                </ToolBarContent>
-                <HeaderContent>
-                    <MudTh>Source Functional Unit</MudTh>
-                    <MudTh>Assigned POC / Team Leader</MudTh>
-                    <MudTh></MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Source Functional Unit">@context.SourceValue</MudTd>
-                    <MudTd DataLabel="Team Leader">@context.TeamLeaderName</MudTd>
-                    <MudTd>
-                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="@(() => DeleteTeamLeader(context))" />
-                    </MudTd>
-                </RowTemplate>
-                <RowEditingTemplate>
-                    <MudTd DataLabel="Source Functional Unit">
-                        <MudTextField @bind-Value="context.SourceValue" Required="true" />
-                    </MudTd>
-                    <MudTd DataLabel="Team Leader">
-                        <MudTextField @bind-Value="context.TeamLeaderName" Required="true" />
-                    </MudTd>
-                    <MudTd></MudTd>
-                </RowEditingTemplate>
-            </MudTable>
-        </MudTabPanel>
+        <button type="button" class="mapcfg-stat-card @(_activeTab == 1 ? "active" : "")" @onclick='() => SetActiveTab(1)'>
+            <div class="mapcfg-stat-top">
+                <span class="mapcfg-stat-label">Functional units</span>
+                <span class="mapcfg-stat-badge">@_functionalUnitMappings.Select(x => x.FunctionalUnitName).Distinct().Count() units</span>
+            </div>
+            <div class="mapcfg-stat-value">@_functionalUnitMappings.Count</div>
+            <div class="mapcfg-stat-desc">Service names to report functional units</div>
+        </button>
 
-        <MudTabPanel Text="Change Category Mappings" Class="ent-p-md">
-            <MudTable T="ChangeCategoryMapping" Items="@_changeCategoryMappings" 
-                      Hover="true" Dense="true" Striped="true" Class="ent-table"
-                      RowEditCommit="CommittedChangeCatChanges" RowEditCancel="CanceledEditingChangeCat"
-                      ApplyButtonPosition="TableApplyButtonPosition.End" EditButtonPosition="TableEditButtonPosition.End" EditTrigger="TableEditTrigger.EditButton">
-                <ToolBarContent>
-                    <MudText Typo="Typo.h6">Change Category Routing Rules</MudText>
-                    <MudSpacer />
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Add" OnClick="AddChangeCategoryMapping">Add New</MudButton>
-                </ToolBarContent>
-                <HeaderContent>
-                    <MudTh>Application Name</MudTh>
-                    <MudTh>Change Type (e.g. Normal-minor)</MudTh>
-                    <MudTh>Target Category Name</MudTh>
-                    <MudTh>Is Active</MudTh>
-                    <MudTh></MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Application Name">@context.ApplicationName</MudTd>
-                    <MudTd DataLabel="Change Type">@context.ChangeType</MudTd>
-                    <MudTd DataLabel="Target Category">@context.CategoryName</MudTd>
-                    <MudTd DataLabel="Is Active">@(context.IsActive ? "Yes" : "No")</MudTd>
-                    <MudTd>
-                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="@(() => DeleteChangeCategoryMapping(context))" />
-                    </MudTd>
-                </RowTemplate>
-                <RowEditingTemplate>
-                    <MudTd DataLabel="Application Name">
-                        <MudTextField @bind-Value="context.ApplicationName" Required="true" />
-                    </MudTd>
-                    <MudTd DataLabel="Change Type">
-                        <MudTextField @bind-Value="context.ChangeType" Required="true" />
-                    </MudTd>
-                    <MudTd DataLabel="Target Category">
-                        <MudTextField @bind-Value="context.CategoryName" Required="true" />
-                    </MudTd>
-                    <MudTd DataLabel="Is Active">
-                        <MudSwitch T="bool" @bind-Checked="context.IsActive" Color="Color.Primary" />
-                    </MudTd>
-                    <MudTd></MudTd>
-                </RowEditingTemplate>
-            </MudTable>
-        </MudTabPanel>
-        </MudTabs>
-    </EnterpriseCard>
-</MudContainer>
+        <button type="button" class="mapcfg-stat-card @(_activeTab == 2 ? "active" : "")" @onclick='() => SetActiveTab(2)'>
+            <div class="mapcfg-stat-top">
+                <span class="mapcfg-stat-label">Team leaders / POCs</span>
+                <span class="mapcfg-stat-badge">@_teamLeaderMappings.Select(x => x.TeamLeaderName).Distinct().Count() owners</span>
+            </div>
+            <div class="mapcfg-stat-value">@_teamLeaderMappings.Count</div>
+            <div class="mapcfg-stat-desc">Functional units to responsible POCs</div>
+        </button>
+
+        <button type="button" class="mapcfg-stat-card @(_activeTab == 3 ? "active" : "")" @onclick='() => SetActiveTab(3)'>
+            <div class="mapcfg-stat-top">
+                <span class="mapcfg-stat-label">Category routing</span>
+                <span class="mapcfg-stat-badge">@_changeCategoryMappings.Count(x => x.IsActive) active</span>
+            </div>
+            <div class="mapcfg-stat-value">@_changeCategoryMappings.Count</div>
+            <div class="mapcfg-stat-desc">Change types to CM review sections</div>
+        </button>
+    </div>
+
+    <!-- Toolbar: Segmented Tabs & Search -->
+    <div class="mapcfg-toolbar">
+        <div class="cmdocs-tabs">
+            <button type="button" class="cmdocs-tab @(_activeTab == 0 ? "active" : "")" @onclick='() => SetActiveTab(0)'>
+                Applications <span class="cmdocs-tab-count">@_applicationMappings.Count</span>
+            </button>
+            <button type="button" class="cmdocs-tab @(_activeTab == 1 ? "active" : "")" @onclick='() => SetActiveTab(1)'>
+                Functional units <span class="cmdocs-tab-count">@_functionalUnitMappings.Count</span>
+            </button>
+            <button type="button" class="cmdocs-tab @(_activeTab == 2 ? "active" : "")" @onclick='() => SetActiveTab(2)'>
+                Team leaders <span class="cmdocs-tab-count">@_teamLeaderMappings.Count</span>
+            </button>
+            <button type="button" class="cmdocs-tab @(_activeTab == 3 ? "active" : "")" @onclick='() => SetActiveTab(3)'>
+                Category routing <span class="cmdocs-tab-count">@_changeCategoryMappings.Count</span>
+            </button>
+        </div>
+
+        <div class="wolist-search-box" style="width: 280px;">
+            <MudIcon Icon="@Icons.Material.Outlined.Search" Class="wolist-search-icon" />
+            <input type="text"
+                   class="wolist-search-input"
+                   placeholder="Search keyword, unit, or owner..."
+                   @bind="_searchQuery"
+                   @bind:event="oninput" />
+            @if (!string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                <button type="button" class="mapcfg-clear-btn" @onclick="() => _searchQuery = string.Empty">
+                    <MudIcon Icon="@Icons.Material.Outlined.Close" Style="font-size: 14px;" />
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="pa-8">
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        </div>
+    }
+    else
+    {
+        <div class="mapcfg-card">
+            @if (_activeTab == 0)
+            {
+                <!-- 1. Application Mappings -->
+                <div class="mapcfg-thead mapcfg-grid-app">
+                    <div>Source keyword / alias</div>
+                    <div></div>
+                    <div>Canonical application</div>
+                    <div>Status</div>
+                    <div class="text-right">Actions</div>
+                </div>
+
+                @if (!FilteredApplications.Any())
+                {
+                    <div class="mapcfg-empty-state">
+                        No application mappings match your filter.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var app in FilteredApplications)
+                    {
+                        bool isEditing = _editingAppId == app.Id;
+                        <div class="mapcfg-row mapcfg-grid-app @(isEditing ? "editing" : "")">
+                            @if (isEditing)
+                            {
+                                <div>
+                                    <input type="text" class="mapcfg-input mapcfg-input-mono" placeholder="Source alias (e.g. Point of Sale)" @bind="app.AliasName" />
+                                </div>
+                                <div class="mapcfg-arrow-col">→</div>
+                                <div>
+                                    <input type="text" class="mapcfg-input" placeholder="Canonical app (e.g. POS)" @bind="app.NormalizedName" />
+                                </div>
+                                <div>
+                                    <label class="repview-total-toggle">
+                                        <input type="checkbox" @bind="app.IsActive" />
+                                        <span>@(app.IsActive ? "Active" : "Inactive")</span>
+                                    </label>
+                                </div>
+                                <div class="mapcfg-row-actions">
+                                    <button type="button" class="mapcfg-btn-save" @onclick="() => SaveApplicationAsync(app)">Save</button>
+                                    <button type="button" class="mapcfg-btn-cancel" @onclick="() => CancelApplicationEditAsync(app)">Cancel</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div>
+                                    <span class="mapcfg-code-chip">@app.AliasName</span>
+                                </div>
+                                <div class="mapcfg-arrow-col">→</div>
+                                <div class="mapcfg-target-col">
+                                    <span class="mapcfg-app-dot"></span>
+                                    <span class="mapcfg-target-text">@app.NormalizedName</span>
+                                </div>
+                                <div>
+                                    @if (app.IsActive)
+                                    {
+                                        <span class="dash-status-pill finalized">
+                                            <span class="dash-status-dot"></span>
+                                            Active
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="wolist-status-pill closed">
+                                            <span class="wolist-status-dot"></span>
+                                            Inactive
+                                        </span>
+                                    }
+                                </div>
+                                <div class="mapcfg-row-actions">
+                                    <button type="button" class="mapcfg-action-btn" @onclick="() => _editingAppId = app.Id">Edit</button>
+                                    <button type="button" class="mapcfg-icon-btn danger" title="Delete rule" @onclick="() => DeleteApplication(app)">
+                                        <MudIcon Icon="@Icons.Material.Outlined.DeleteOutline" Style="font-size: 16px;" />
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                <div class="mapcfg-footer">
+                    <span>Showing @FilteredApplications.Count() of @_applicationMappings.Count application rules</span>
+                    <span>Used during Excel import and CM Review document auto-detection</span>
+                </div>
+            }
+            else if (_activeTab == 1)
+            {
+                <!-- 2. Functional Unit Mappings -->
+                <div class="mapcfg-thead mapcfg-grid-2col">
+                    <div>Source keyword / service name</div>
+                    <div></div>
+                    <div>Assigned functional unit</div>
+                    <div class="text-right">Actions</div>
+                </div>
+
+                @if (!FilteredFunctionalUnits.Any())
+                {
+                    <div class="mapcfg-empty-state">
+                        No functional unit mappings match your filter.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var fu in FilteredFunctionalUnits)
+                    {
+                        bool isEditing = _editingFuId == fu.Id;
+                        <div class="mapcfg-row mapcfg-grid-2col @(isEditing ? "editing" : "")">
+                            @if (isEditing)
+                            {
+                                <div>
+                                    <input type="text" class="mapcfg-input mapcfg-input-mono" placeholder="Source service keyword" @bind="fu.SourceValue" />
+                                </div>
+                                <div class="mapcfg-arrow-col">→</div>
+                                <div>
+                                    <input type="text" class="mapcfg-input" placeholder="Assigned functional unit" @bind="fu.FunctionalUnitName" />
+                                </div>
+                                <div class="mapcfg-row-actions">
+                                    <button type="button" class="mapcfg-btn-save" @onclick="() => SaveFunctionalUnitAsync(fu)">Save</button>
+                                    <button type="button" class="mapcfg-btn-cancel" @onclick="() => CancelFunctionalUnitEditAsync(fu)">Cancel</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div>
+                                    <span class="mapcfg-code-chip">@fu.SourceValue</span>
+                                </div>
+                                <div class="mapcfg-arrow-col">→</div>
+                                <div class="mapcfg-target-col">
+                                    <span class="mapcfg-unit-pill">@fu.FunctionalUnitName</span>
+                                </div>
+                                <div class="mapcfg-row-actions">
+                                    <button type="button" class="mapcfg-action-btn" @onclick="() => _editingFuId = fu.Id">Edit</button>
+                                    <button type="button" class="mapcfg-icon-btn danger" title="Delete rule" @onclick="() => DeleteFunctionalUnit(fu)">
+                                        <MudIcon Icon="@Icons.Material.Outlined.DeleteOutline" Style="font-size: 16px;" />
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                <div class="mapcfg-footer">
+                    <span>Showing @FilteredFunctionalUnits.Count() of @_functionalUnitMappings.Count functional unit rules</span>
+                    <span>Maps Service Name column from Excel to Monthly Summary rows</span>
+                </div>
+            }
+            else if (_activeTab == 2)
+            {
+                <!-- 3. Team Leader Mappings -->
+                <div class="mapcfg-thead mapcfg-grid-2col">
+                    <div>Functional unit</div>
+                    <div></div>
+                    <div>Assigned POC / team leader</div>
+                    <div class="text-right">Actions</div>
+                </div>
+
+                @if (!FilteredTeamLeaders.Any())
+                {
+                    <div class="mapcfg-empty-state">
+                        No team leader mappings match your filter.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var tl in FilteredTeamLeaders)
+                    {
+                        bool isEditing = _editingTlId == tl.Id;
+                        <div class="mapcfg-row mapcfg-grid-2col @(isEditing ? "editing" : "")">
+                            @if (isEditing)
+                            {
+                                <div>
+                                    <input type="text" class="mapcfg-input" placeholder="Functional unit name" @bind="tl.SourceValue" />
+                                </div>
+                                <div class="mapcfg-arrow-col">→</div>
+                                <div>
+                                    <input type="text" class="mapcfg-input" placeholder="Team leader / POC name" @bind="tl.TeamLeaderName" />
+                                </div>
+                                <div class="mapcfg-row-actions">
+                                    <button type="button" class="mapcfg-btn-save" @onclick="() => SaveTeamLeaderAsync(tl)">Save</button>
+                                    <button type="button" class="mapcfg-btn-cancel" @onclick="() => CancelTeamLeaderEditAsync(tl)">Cancel</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="mapcfg-target-col">
+                                    <span class="mapcfg-target-text">@tl.SourceValue</span>
+                                </div>
+                                <div class="mapcfg-arrow-col">→</div>
+                                <div class="mapcfg-owner-cell">
+                                    <span class="mapcfg-owner-avatar">@GetInitials(tl.TeamLeaderName)</span>
+                                    <span class="mapcfg-owner-name">@tl.TeamLeaderName</span>
+                                </div>
+                                <div class="mapcfg-row-actions">
+                                    <button type="button" class="mapcfg-action-btn" @onclick="() => _editingTlId = tl.Id">Edit</button>
+                                    <button type="button" class="mapcfg-icon-btn danger" title="Delete rule" @onclick="() => DeleteTeamLeader(tl)">
+                                        <MudIcon Icon="@Icons.Material.Outlined.DeleteOutline" Style="font-size: 16px;" />
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                <div class="mapcfg-footer">
+                    <span>Showing @FilteredTeamLeaders.Count() of @_teamLeaderMappings.Count POC assignments</span>
+                    <span>Assigns Team Leader / POC column in Monthly Summary reports</span>
+                </div>
+            }
+            else
+            {
+                <!-- 4. Change Category Routing Rules -->
+                <div class="mapcfg-thead mapcfg-grid-cat">
+                    <div>Application</div>
+                    <div>Change type</div>
+                    <div></div>
+                    <div>Target CM review category</div>
+                    <div>Status</div>
+                    <div class="text-right">Actions</div>
+                </div>
+
+                @if (!FilteredCategoryMappings.Any())
+                {
+                    <div class="mapcfg-empty-state">
+                        <div>No category routing rules configured yet.</div>
+                        <div style="margin-top: 8px;">
+                            <button type="button" class="dash-btn-outline" @onclick="AddChangeCategoryMapping">
+                                <MudIcon Icon="@Icons.Material.Outlined.Add" Style="font-size: 15px;" />
+                                <span>Add first routing rule</span>
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var cat in FilteredCategoryMappings)
+                    {
+                        bool isEditing = _editingCatId == cat.Id;
+                        <div class="mapcfg-row mapcfg-grid-cat @(isEditing ? "editing" : "")">
+                            @if (isEditing)
+                            {
+                                <div>
+                                    <input type="text" class="mapcfg-input" placeholder="e.g. POS" @bind="cat.ApplicationName" />
+                                </div>
+                                <div>
+                                    <input type="text" class="mapcfg-input mapcfg-input-mono" placeholder="e.g. Normal-minor" @bind="cat.ChangeType" />
+                                </div>
+                                <div class="mapcfg-arrow-col">→</div>
+                                <div>
+                                    <input type="text" class="mapcfg-input" placeholder="Target category name" @bind="cat.CategoryName" />
+                                </div>
+                                <div>
+                                    <label class="repview-total-toggle">
+                                        <input type="checkbox" @bind="cat.IsActive" />
+                                        <span>@(cat.IsActive ? "Active" : "Inactive")</span>
+                                    </label>
+                                </div>
+                                <div class="mapcfg-row-actions">
+                                    <button type="button" class="mapcfg-btn-save" @onclick="() => SaveCategoryMappingAsync(cat)">Save</button>
+                                    <button type="button" class="mapcfg-btn-cancel" @onclick="() => CancelCategoryMappingEditAsync(cat)">Cancel</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="mapcfg-target-col">
+                                    <span class="mapcfg-target-text">@cat.ApplicationName</span>
+                                </div>
+                                <div>
+                                    <span class="mapcfg-code-chip">@cat.ChangeType</span>
+                                </div>
+                                <div class="mapcfg-arrow-col">→</div>
+                                <div>
+                                    <span class="mapcfg-unit-pill">@cat.CategoryName</span>
+                                </div>
+                                <div>
+                                    @if (cat.IsActive)
+                                    {
+                                        <span class="dash-status-pill finalized">
+                                            <span class="dash-status-dot"></span>
+                                            Active
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="wolist-status-pill closed">
+                                            <span class="wolist-status-dot"></span>
+                                            Inactive
+                                        </span>
+                                    }
+                                </div>
+                                <div class="mapcfg-row-actions">
+                                    <button type="button" class="mapcfg-action-btn" @onclick="() => _editingCatId = cat.Id">Edit</button>
+                                    <button type="button" class="mapcfg-icon-btn danger" title="Delete rule" @onclick="() => DeleteChangeCategoryMapping(cat)">
+                                        <MudIcon Icon="@Icons.Material.Outlined.DeleteOutline" Style="font-size: 16px;" />
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                <div class="mapcfg-footer">
+                    <span>Showing @FilteredCategoryMappings.Count() of @_changeCategoryMappings.Count routing rules</span>
+                    <span>Routes work orders into CM Review document sections automatically</span>
+                </div>
+            }
+        </div>
+    }
+</div>
 
 @code {
     private List<FunctionalUnitMapping> _functionalUnitMappings = new();
     private List<TeamLeaderMapping> _teamLeaderMappings = new();
     private List<ApplicationMapping> _applicationMappings = new();
     private List<ChangeCategoryMapping> _changeCategoryMappings = new();
+
+    private int _activeTab = 0;
+    private string _searchQuery = string.Empty;
+    private bool _isLoading = true;
+
+    private Guid? _editingAppId;
+    private Guid? _editingFuId;
+    private Guid? _editingTlId;
+    private Guid? _editingCatId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -179,41 +430,135 @@
 
     private async Task LoadDataAsync()
     {
-        _functionalUnitMappings = await MappingService.GetFunctionalUnitMappingsAsync();
-        _teamLeaderMappings = await MappingService.GetTeamLeaderMappingsAsync();
-        _applicationMappings = await MappingService.GetApplicationMappingsAsync();
-        _changeCategoryMappings = await MappingService.GetChangeCategoryMappingsAsync();
+        _isLoading = true;
+        try
+        {
+            _functionalUnitMappings = await MappingService.GetFunctionalUnitMappingsAsync();
+            _teamLeaderMappings = await MappingService.GetTeamLeaderMappingsAsync();
+            _applicationMappings = await MappingService.GetApplicationMappingsAsync();
+            _changeCategoryMappings = await MappingService.GetChangeCategoryMappingsAsync();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
+
+    private void SetActiveTab(int index)
+    {
+        _activeTab = index;
+        _editingAppId = null;
+        _editingFuId = null;
+        _editingTlId = null;
+        _editingCatId = null;
+    }
+
+    private static string GetInitials(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName)) return "PO";
+        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
+        return $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+    }
+
+    private string GetAddButtonText() => _activeTab switch
+    {
+        0 => "Add application",
+        1 => "Add functional unit",
+        2 => "Add team leader",
+        _ => "Add routing rule"
+    };
+
+    private void AddRuleForActiveTab()
+    {
+        switch (_activeTab)
+        {
+            case 0:
+                AddApplication();
+                break;
+            case 1:
+                AddFunctionalUnit();
+                break;
+            case 2:
+                AddTeamLeader();
+                break;
+            case 3:
+                AddChangeCategoryMapping();
+                break;
+        }
+    }
+
+    private IEnumerable<ApplicationMapping> FilteredApplications =>
+        string.IsNullOrWhiteSpace(_searchQuery)
+            ? _applicationMappings
+            : _applicationMappings.Where(x =>
+                (x.NormalizedName?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (x.AliasName?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    private IEnumerable<FunctionalUnitMapping> FilteredFunctionalUnits =>
+        string.IsNullOrWhiteSpace(_searchQuery)
+            ? _functionalUnitMappings
+            : _functionalUnitMappings.Where(x =>
+                (x.SourceValue?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (x.FunctionalUnitName?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    private IEnumerable<TeamLeaderMapping> FilteredTeamLeaders =>
+        string.IsNullOrWhiteSpace(_searchQuery)
+            ? _teamLeaderMappings
+            : _teamLeaderMappings.Where(x =>
+                (x.SourceValue?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (x.TeamLeaderName?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    private IEnumerable<ChangeCategoryMapping> FilteredCategoryMappings =>
+        string.IsNullOrWhiteSpace(_searchQuery)
+            ? _changeCategoryMappings
+            : _changeCategoryMappings.Where(x =>
+                (x.ApplicationName?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (x.ChangeType?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (x.CategoryName?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
 
     // --- Application Logic ---
 
     private void AddApplication()
     {
-        var newItem = new ApplicationMapping { NormalizedName = "New Application", AliasName = "New Alias", IsActive = true };
+        var newItem = new ApplicationMapping { Id = Guid.Empty, NormalizedName = "", AliasName = "", IsActive = true };
         _applicationMappings.Insert(0, newItem);
+        _editingAppId = Guid.Empty;
     }
 
-    private void CanceledEditingApp(object element)
+    private async Task SaveApplicationAsync(ApplicationMapping item)
     {
-        var item = (ApplicationMapping)element;
-        if (item.Id == Guid.Empty)
+        if (string.IsNullOrWhiteSpace(item.NormalizedName) || string.IsNullOrWhiteSpace(item.AliasName))
         {
-            _applicationMappings.Remove(item);
+            Snackbar.Add("Both Alias and Canonical Application Name are required.", Severity.Warning);
+            return;
         }
-    }
 
-    private async void CommittedAppChanges(object element)
-    {
-        var item = (ApplicationMapping)element;
         if (item.Id == Guid.Empty)
         {
             await MappingService.AddApplicationMappingAsync(item);
-            Snackbar.Add("Application Mapping Added", Severity.Success);
+            Snackbar.Add("Application mapping added.", Severity.Success);
         }
         else
         {
             await MappingService.UpdateApplicationMappingAsync(item);
-            Snackbar.Add("Application Mapping Updated", Severity.Success);
+            Snackbar.Add("Application mapping updated.", Severity.Success);
+        }
+
+        _editingAppId = null;
+        await LoadDataAsync();
+    }
+
+    private async Task CancelApplicationEditAsync(ApplicationMapping item)
+    {
+        _editingAppId = null;
+        if (item.Id == Guid.Empty)
+        {
+            _applicationMappings.Remove(item);
+        }
+        else
+        {
+            await LoadDataAsync();
         }
     }
 
@@ -222,7 +567,7 @@
         if (item.Id != Guid.Empty)
         {
             await MappingService.DeleteApplicationMappingAsync(item.Id);
-            Snackbar.Add("Application Mapping Deleted", Severity.Success);
+            Snackbar.Add("Application mapping deleted.", Severity.Success);
         }
         _applicationMappings.Remove(item);
     }
@@ -231,36 +576,44 @@
 
     private void AddFunctionalUnit()
     {
-        var newItem = new FunctionalUnitMapping { SourceValue = "New Source", FunctionalUnitName = "New Unit" };
+        var newItem = new FunctionalUnitMapping { Id = Guid.Empty, SourceValue = "", FunctionalUnitName = "" };
         _functionalUnitMappings.Insert(0, newItem);
+        _editingFuId = Guid.Empty;
     }
 
-    private void StartedEditingFU(FunctionalUnitMapping item)
+    private async Task SaveFunctionalUnitAsync(FunctionalUnitMapping item)
     {
-        // Optional logic
-    }
-
-    private void CanceledEditingFU(object element)
-    {
-        var item = (FunctionalUnitMapping)element;
-        if (item.Id == Guid.Empty)
+        if (string.IsNullOrWhiteSpace(item.SourceValue) || string.IsNullOrWhiteSpace(item.FunctionalUnitName))
         {
-            _functionalUnitMappings.Remove(item);
+            Snackbar.Add("Both Source Keyword and Functional Unit are required.", Severity.Warning);
+            return;
         }
-    }
 
-    private async void CommittedFUChanges(object element)
-    {
-        var item = (FunctionalUnitMapping)element;
         if (item.Id == Guid.Empty)
         {
             await MappingService.AddFunctionalUnitMappingAsync(item);
-            Snackbar.Add("Functional Unit Mapping Added", Severity.Success);
+            Snackbar.Add("Functional unit mapping added.", Severity.Success);
         }
         else
         {
             await MappingService.UpdateFunctionalUnitMappingAsync(item);
-            Snackbar.Add("Functional Unit Mapping Updated", Severity.Success);
+            Snackbar.Add("Functional unit mapping updated.", Severity.Success);
+        }
+
+        _editingFuId = null;
+        await LoadDataAsync();
+    }
+
+    private async Task CancelFunctionalUnitEditAsync(FunctionalUnitMapping item)
+    {
+        _editingFuId = null;
+        if (item.Id == Guid.Empty)
+        {
+            _functionalUnitMappings.Remove(item);
+        }
+        else
+        {
+            await LoadDataAsync();
         }
     }
 
@@ -269,7 +622,7 @@
         if (item.Id != Guid.Empty)
         {
             await MappingService.DeleteFunctionalUnitMappingAsync(item.Id);
-            Snackbar.Add("Functional Unit Mapping Deleted", Severity.Success);
+            Snackbar.Add("Functional unit mapping deleted.", Severity.Success);
         }
         _functionalUnitMappings.Remove(item);
     }
@@ -278,36 +631,44 @@
 
     private void AddTeamLeader()
     {
-        var newItem = new TeamLeaderMapping { SourceValue = "New Unit", TeamLeaderName = "New Leader" };
+        var newItem = new TeamLeaderMapping { Id = Guid.Empty, SourceValue = "", TeamLeaderName = "" };
         _teamLeaderMappings.Insert(0, newItem);
+        _editingTlId = Guid.Empty;
     }
 
-    private void StartedEditingTL(TeamLeaderMapping item)
+    private async Task SaveTeamLeaderAsync(TeamLeaderMapping item)
     {
-        // Optional logic
-    }
-
-    private void CanceledEditingTL(object element)
-    {
-        var item = (TeamLeaderMapping)element;
-        if (item.Id == Guid.Empty)
+        if (string.IsNullOrWhiteSpace(item.SourceValue) || string.IsNullOrWhiteSpace(item.TeamLeaderName))
         {
-            _teamLeaderMappings.Remove(item);
+            Snackbar.Add("Both Functional Unit and Team Leader are required.", Severity.Warning);
+            return;
         }
-    }
 
-    private async void CommittedTLChanges(object element)
-    {
-        var item = (TeamLeaderMapping)element;
         if (item.Id == Guid.Empty)
         {
             await MappingService.AddTeamLeaderMappingAsync(item);
-            Snackbar.Add("Team Leader Mapping Added", Severity.Success);
+            Snackbar.Add("Team leader mapping added.", Severity.Success);
         }
         else
         {
             await MappingService.UpdateTeamLeaderMappingAsync(item);
-            Snackbar.Add("Team Leader Mapping Updated", Severity.Success);
+            Snackbar.Add("Team leader mapping updated.", Severity.Success);
+        }
+
+        _editingTlId = null;
+        await LoadDataAsync();
+    }
+
+    private async Task CancelTeamLeaderEditAsync(TeamLeaderMapping item)
+    {
+        _editingTlId = null;
+        if (item.Id == Guid.Empty)
+        {
+            _teamLeaderMappings.Remove(item);
+        }
+        else
+        {
+            await LoadDataAsync();
         }
     }
 
@@ -316,7 +677,7 @@
         if (item.Id != Guid.Empty)
         {
             await MappingService.DeleteTeamLeaderMappingAsync(item.Id);
-            Snackbar.Add("Team Leader Mapping Deleted", Severity.Success);
+            Snackbar.Add("Team leader mapping deleted.", Severity.Success);
         }
         _teamLeaderMappings.Remove(item);
     }
@@ -325,31 +686,44 @@
 
     private void AddChangeCategoryMapping()
     {
-        var newItem = new ChangeCategoryMapping { ApplicationName = "Sales Force App", ChangeType = "Normal-minor", CategoryName = "Business Logic -OneSalesApp", IsActive = true };
+        var newItem = new ChangeCategoryMapping { Id = Guid.Empty, ApplicationName = "POS", ChangeType = "Normal-minor", CategoryName = "Standard Change", IsActive = true };
         _changeCategoryMappings.Insert(0, newItem);
+        _editingCatId = Guid.Empty;
     }
 
-    private void CanceledEditingChangeCat(object element)
+    private async Task SaveCategoryMappingAsync(ChangeCategoryMapping item)
     {
-        var item = (ChangeCategoryMapping)element;
-        if (item.Id == Guid.Empty)
+        if (string.IsNullOrWhiteSpace(item.ApplicationName) || string.IsNullOrWhiteSpace(item.ChangeType) || string.IsNullOrWhiteSpace(item.CategoryName))
         {
-            _changeCategoryMappings.Remove(item);
+            Snackbar.Add("Application, Change Type, and Target Category are required.", Severity.Warning);
+            return;
         }
-    }
 
-    private async void CommittedChangeCatChanges(object element)
-    {
-        var item = (ChangeCategoryMapping)element;
         if (item.Id == Guid.Empty)
         {
             await MappingService.AddChangeCategoryMappingAsync(item);
-            Snackbar.Add("Change Category Mapping Added", Severity.Success);
+            Snackbar.Add("Category routing rule added.", Severity.Success);
         }
         else
         {
             await MappingService.UpdateChangeCategoryMappingAsync(item);
-            Snackbar.Add("Change Category Mapping Updated", Severity.Success);
+            Snackbar.Add("Category routing rule updated.", Severity.Success);
+        }
+
+        _editingCatId = null;
+        await LoadDataAsync();
+    }
+
+    private async Task CancelCategoryMappingEditAsync(ChangeCategoryMapping item)
+    {
+        _editingCatId = null;
+        if (item.Id == Guid.Empty)
+        {
+            _changeCategoryMappings.Remove(item);
+        }
+        else
+        {
+            await LoadDataAsync();
         }
     }
 
@@ -358,7 +732,7 @@
         if (item.Id != Guid.Empty)
         {
             await MappingService.DeleteChangeCategoryMappingAsync(item.Id);
-            Snackbar.Add("Change Category Mapping Deleted", Severity.Success);
+            Snackbar.Add("Category routing rule deleted.", Severity.Success);
         }
         _changeCategoryMappings.Remove(item);
     }

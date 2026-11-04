@@ -1,76 +1,337 @@
 @page "/cm-reviews"
+@using WO_CM_Review_Automation.Domain.Entities
 @using WO_CM_Review_Automation.Domain.Entities.CMReview
 @using WO_CM_Review_Automation.Application.Interfaces
-@using WO_CM_Review_Automation.Web.Components.Shared
+@using WO_CM_Review_Automation.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
 @inject ICMReviewDocumentService DocumentService
+@inject ICMReviewWOReportService WOReportService
 @inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
 
-<PageTitle>CM Review Documents</PageTitle>
+<PageTitle>Documents - WO CM Review</PageTitle>
 
-<EnterprisePageHeader Title="CM Review Documents" Subtitle="View all CM Review drafts and finalized documents" />
+<div class="cmdocs-wrapper">
+    <!-- Top Page Header -->
+    <div class="cmdocs-header-row">
+        <div>
+            <h1 class="cmdocs-title">CM Review documents</h1>
+            <div class="cmdocs-subtitle">Drafts and finalized reviews, one per application each month.</div>
+        </div>
 
-@if (_isLoading)
-{
-    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
-}
-else if (!_documents.Any())
-{
-    <EnterpriseEmptyState 
-        Icon="@Icons.Material.Filled.DocumentScanner" 
-        Title="No Documents Found" 
-        Description="There are currently no CM Review documents available to display." />
-}
-else
-{
-    <MudTable Items="@_documents" Hover="true" Breakpoint="Breakpoint.Sm" Elevation="1" Class="ent-table">
-        <HeaderContent>
-            <MudTh>Application</MudTh>
-            <MudTh>Period</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh>Version</MudTh>
-            <MudTh>Created Date</MudTh>
-            <MudTh>Action</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="Application">@context.Application</MudTd>
-            <MudTd DataLabel="Period">@GetMonthName(context.ReportingMonth) @context.ReportingYear</MudTd>
-            <MudTd DataLabel="Status">
-                @if (context.Status == CMReviewDocumentStatus.Finalized)
+        <div>
+            <button type="button" class="dash-btn-primary" @onclick="@(() => NavigationManager.NavigateTo("/cm-review/document-preparation"))">
+                <MudIcon Icon="@Icons.Material.Outlined.Add" Size="Size.Small" Style="font-size: 16px;" />
+                <span>New document</span>
+            </button>
+        </div>
+    </div>
+
+    @if (!_isLoading && !_allDocs.Any())
+    {
+        <EnterpriseEmptyState 
+            Icon="@Icons.Material.Filled.DocumentScanner" 
+            Title="No Documents Found" 
+            Description="There are currently no CM Review documents available to display."
+            PrimaryAction="@(() => NavigationManager.NavigateTo("/cm-review/document-preparation"))"
+            PrimaryActionText="New document" />
+    }
+    else if (_allDocs.Any())
+    {
+        <!-- Segmented Filter Pill Tabs + Expand/Collapse All -->
+        <div class="cmdocs-toolbar-row">
+            <div class="cmdocs-tabs" style="margin-bottom: 0;">
+                <button type="button"
+                        class="cmdocs-tab @(_activeTab == FilterTab.All ? "active" : "")"
+                        @onclick="@(() => _activeTab = FilterTab.All)">
+                    <span>All</span>
+                    <span class="cmdocs-tab-count">@_allDocs.Count</span>
+                </button>
+                <button type="button"
+                        class="cmdocs-tab @(_activeTab == FilterTab.Drafts ? "active" : "")"
+                        @onclick="@(() => _activeTab = FilterTab.Drafts)">
+                    <span>Drafts</span>
+                    <span class="cmdocs-tab-count">@_allDocs.Count(d => !d.IsFinalized)</span>
+                </button>
+                <button type="button"
+                        class="cmdocs-tab @(_activeTab == FilterTab.Finalized ? "active" : "")"
+                        @onclick="@(() => _activeTab = FilterTab.Finalized)">
+                    <span>Finalized</span>
+                    <span class="cmdocs-tab-count">@_allDocs.Count(d => d.IsFinalized)</span>
+                </button>
+            </div>
+
+            @if (GroupedDocuments.Any())
+            {
+                <div class="cmdocs-expand-all-wrap">
+                    <button type="button" class="cmdocs-toggle-all-btn" @onclick="ToggleAllMonths">
+                        <MudIcon Icon="@(AreAllMonthsExpanded ? Icons.Material.Outlined.UnfoldLess : Icons.Material.Outlined.UnfoldMore)" Style="font-size: 15px;" />
+                        <span>@(AreAllMonthsExpanded ? "Hide all months" : "Unhide all months")</span>
+                    </button>
+                </div>
+            }
+        </div>
+
+        <!-- Grouped by Month & Year -->
+        @foreach (var group in GroupedDocuments)
+        {
+            var monthKey = $"{group.Year:D4}-{group.Month:D2}";
+            var isExpanded = _expandedMonths.Contains(monthKey);
+
+            <div class="cmdocs-month-section @(isExpanded ? "expanded" : "collapsed")">
+                <div class="cmdocs-month-header clickable" @onclick="@(() => ToggleMonthGroup(monthKey))">
+                    <div class="cmdocs-month-header-left">
+                        <MudIcon Icon="@(isExpanded ? Icons.Material.Outlined.KeyboardArrowDown : Icons.Material.Outlined.KeyboardArrowRight)"
+                                 Class="cmdocs-month-chevron"
+                                 Style="font-size: 18px;" />
+                        <h2 class="cmdocs-month-title">@group.MonthYearLabel</h2>
+                        <span class="cmdocs-month-doc-pill">@group.VisibleDocuments.Count @(group.VisibleDocuments.Count == 1 ? "doc" : "docs")</span>
+                    </div>
+
+                    <div class="cmdocs-month-progress">
+                        <span class="cmdocs-month-progress-text">@group.FinalizedCount of @group.TotalInGroup finalized</span>
+                        <div class="cmdocs-mini-bars">
+                            @for (int i = 0; i < group.TotalInGroup; i++)
+                            {
+                                var isDone = i < group.FinalizedCount;
+                                <span class="cmdocs-mini-bar @(isDone ? "done" : "")"></span>
+                            }
+                        </div>
+                        <span class="cmdocs-month-toggle-label">@(isExpanded ? "Hide" : "Unhide")</span>
+                    </div>
+                </div>
+
+                @if (isExpanded)
                 {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Finalized</MudChip>
+                    <div class="cmdocs-list">
+                        @foreach (var doc in group.VisibleDocuments)
+                        {
+                            <div class="cmdocs-row">
+                                <div class="cmdocs-col-app" style="cursor: pointer;" @onclick="@(() => OpenDocument(doc.Id))">
+                                    <div class="cmdocs-app-name">@doc.DisplayName</div>
+                                    <div class="cmdocs-app-sub">@FormatChangesSubtitle(doc.ChangesCount, doc.Version)</div>
+                                </div>
+
+                                <div class="cmdocs-col-status">
+                                    @if (doc.IsFinalized)
+                                    {
+                                        <span class="dash-doc-badge finalized">
+                                            <span class="dash-doc-dot"></span>Finalized
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="dash-doc-badge draft">
+                                            <span class="dash-doc-dot"></span>Draft
+                                        </span>
+                                    }
+                                </div>
+
+                                <div class="cmdocs-col-owner">@doc.OwnerName</div>
+
+                                <div class="cmdocs-col-date">@doc.DateLabel</div>
+
+                                <div class="cmdocs-col-actions" style="position: relative;">
+                                    @if (doc.IsFinalized)
+                                    {
+                                        <button type="button" class="cmdocs-btn-view" @onclick="@(() => OpenDocument(doc.Id))">
+                                            <MudIcon Icon="@Icons.Material.Outlined.Visibility" Style="font-size: 14px;" />
+                                            <span>View</span>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="cmdocs-btn-continue" @onclick="@(() => OpenDocument(doc.Id))">
+                                            <span>Continue</span>
+                                            <span class="cmdocs-continue-arrow">→</span>
+                                        </button>
+                                    }
+
+                                    <div class="ent-action-menu-wrap" @onclick:stopPropagation="true">
+                                        <button type="button"
+                                                class="mreports-more-btn @(_openMenuDocId == doc.Id ? "active" : "")"
+                                                title="More actions"
+                                                @onclick="@(() => ToggleDocMenu(doc.Id))">
+                                            <MudIcon Icon="@Icons.Material.Outlined.MoreHoriz" Size="Size.Small" Style="font-size: 16px;" />
+                                        </button>
+
+                                        @if (_openMenuDocId == doc.Id)
+                                        {
+                                            <div class="ent-action-menu-backdrop" @onclick="CloseDocMenu"></div>
+                                            <div class="ent-action-menu-dropdown">
+                                                <button type="button" class="ent-action-menu-item" @onclick="@(() => { CloseDocMenu(); OpenDocument(doc.Id); })">
+                                                    <MudIcon Icon="@(doc.IsFinalized ? Icons.Material.Outlined.Visibility : Icons.Material.Outlined.Edit)" Style="font-size: 15px; color: #64748b;" />
+                                                    <span>@(doc.IsFinalized ? "View document" : "Continue preparation")</span>
+                                                </button>
+                                                <button type="button" class="ent-action-menu-item" @onclick="@(async () => { CloseDocMenu(); await ToggleFinalizeStatusAsync(doc); })">
+                                                    <MudIcon Icon="@(doc.IsFinalized ? Icons.Material.Outlined.RestartAlt : Icons.Material.Outlined.CheckCircleOutline)" Style="font-size: 15px; color: #64748b;" />
+                                                    <span>@(doc.IsFinalized ? "Reopen as Draft" : "Mark as Finalized")</span>
+                                                </button>
+                                                <div class="ent-action-menu-divider"></div>
+                                                <button type="button" class="ent-action-menu-item danger" @onclick="@(async () => { CloseDocMenu(); await DeleteDocumentAsync(doc); })">
+                                                    <MudIcon Icon="@Icons.Material.Outlined.DeleteOutline" Style="font-size: 15px;" />
+                                                    <span>Delete document</span>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
                 }
-                else
-                {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">Draft</MudChip>
-                }
-            </MudTd>
-            <MudTd DataLabel="Version">@context.DocumentVersion</MudTd>
-            <MudTd DataLabel="Created Date">@context.CreatedDate.ToString("MMM dd, yyyy")</MudTd>
-            <MudTd DataLabel="Action">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenDocument(context.Id))">
-                    @(context.Status == CMReviewDocumentStatus.Finalized ? "View" : "Edit / Prepare")
-                </MudButton>
-            </MudTd>
-        </RowTemplate>
-        <PagerContent>
-            <MudTablePager />
-        </PagerContent>
-    </MudTable>
-}
+            </div>
+        }
+    }
+</div>
 
 @code {
-    private List<CMReviewDocument> _documents = new();
+    private enum FilterTab { All, Drafts, Finalized }
+    private FilterTab _activeTab = FilterTab.All;
     private bool _isLoading = true;
+    private Guid? _openMenuDocId;
+    private List<DocRowViewModel> _allDocs = new();
+    private HashSet<string> _expandedMonths = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool AreAllMonthsExpanded =>
+        GroupedDocuments.Any() &&
+        GroupedDocuments.All(g => _expandedMonths.Contains($"{g.Year:D4}-{g.Month:D2}"));
+
+    private void ToggleMonthGroup(string monthKey)
+    {
+        if (!_expandedMonths.Remove(monthKey))
+        {
+            _expandedMonths.Add(monthKey);
+        }
+    }
+
+    private void ToggleAllMonths()
+    {
+        if (AreAllMonthsExpanded)
+        {
+            _expandedMonths.Clear();
+        }
+        else
+        {
+            foreach (var g in GroupedDocuments)
+            {
+                _expandedMonths.Add($"{g.Year:D4}-{g.Month:D2}");
+            }
+        }
+    }
+
+    private class DocRowViewModel
+    {
+        public Guid Id { get; set; }
+        public string Application { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public int ReportingMonth { get; set; }
+        public int ReportingYear { get; set; }
+        public string Version { get; set; } = "1.0";
+        public bool IsFinalized { get; set; }
+        public int ChangesCount { get; set; }
+        public string OwnerName { get; set; } = string.Empty;
+        public string DateLabel { get; set; } = string.Empty;
+    }
+
+    private class MonthGroupViewModel
+    {
+        public int Year { get; set; }
+        public int Month { get; set; }
+        public string MonthYearLabel { get; set; } = string.Empty;
+        public int FinalizedCount { get; set; }
+        public int TotalInGroup { get; set; }
+        public List<DocRowViewModel> VisibleDocuments { get; set; } = new();
+    }
+
+    private List<MonthGroupViewModel> GroupedDocuments
+    {
+        get
+        {
+            var groups = _allDocs
+                .GroupBy(d => new { d.ReportingYear, d.ReportingMonth })
+                .OrderByDescending(g => g.Key.ReportingYear)
+                .ThenByDescending(g => g.Key.ReportingMonth)
+                .Select(g =>
+                {
+                    var allInPeriod = g.ToList();
+                    IEnumerable<DocRowViewModel> visible = allInPeriod;
+                    if (_activeTab == FilterTab.Drafts)
+                        visible = allInPeriod.Where(x => !x.IsFinalized);
+                    else if (_activeTab == FilterTab.Finalized)
+                        visible = allInPeriod.Where(x => x.IsFinalized);
+
+                    return new MonthGroupViewModel
+                    {
+                        Year = g.Key.ReportingYear,
+                        Month = g.Key.ReportingMonth,
+                        MonthYearLabel = GetMonthYearName(g.Key.ReportingMonth, g.Key.ReportingYear),
+                        FinalizedCount = allInPeriod.Count(x => x.IsFinalized),
+                        TotalInGroup = allInPeriod.Count,
+                        VisibleDocuments = visible.ToList()
+                    };
+                })
+                .Where(g => g.VisibleDocuments.Any())
+                .ToList();
+
+            return groups;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
+    {
+        await LoadDocumentsAsync();
+    }
+
+    private async Task LoadDocumentsAsync()
     {
         try
         {
             _isLoading = true;
-            _documents = await DocumentService.GetAllDocumentsAsync();
-            _documents = _documents.OrderByDescending(d => d.ReportingYear)
-                                   .ThenByDescending(d => d.ReportingMonth)
-                                   .ToList();
+
+            var docs = await DbContext.CMReviewDocuments
+                .Include(d => d.WOReportItems)
+                .Include(d => d.ChangeCategories)
+                    .ThenInclude(c => c.ChangeDetails)
+                .OrderByDescending(d => d.ReportingYear)
+                .ThenByDescending(d => d.ReportingMonth)
+                .ThenBy(d => d.CreatedDate)
+                .ToListAsync();
+
+            var tlMappings = await DbContext.TeamLeaderMappings.ToListAsync();
+            var fuMappings = await DbContext.FunctionalUnitMappings.ToListAsync();
+
+            var viewModels = new List<DocRowViewModel>();
+
+            foreach (var doc in docs)
+            {
+                int changeCount = doc.WOReportItems?.Count ?? 0;
+                if (changeCount == 0 && doc.ChangeCategories != null)
+                {
+                    changeCount = doc.ChangeCategories.SelectMany(c => c.ChangeDetails).Count();
+                }
+
+                var displayApp = doc.Application.Equals("Techvan", StringComparison.OrdinalIgnoreCase) ? "TechVan" : doc.Application;
+                var owner = ResolveOwnerName(doc.Application, tlMappings, fuMappings);
+                var dt = doc.FinalizedDate ?? doc.ModifiedDate ?? doc.CreatedDate;
+
+                viewModels.Add(new DocRowViewModel
+                {
+                    Id = doc.Id,
+                    Application = doc.Application,
+                    DisplayName = displayApp,
+                    ReportingMonth = doc.ReportingMonth,
+                    ReportingYear = doc.ReportingYear,
+                    Version = string.IsNullOrWhiteSpace(doc.DocumentVersion) ? "1.0" : doc.DocumentVersion,
+                    IsFinalized = doc.Status == CMReviewDocumentStatus.Finalized,
+                    ChangesCount = changeCount,
+                    OwnerName = owner,
+                    DateLabel = dt.ToLocalTime().ToString("MMM dd, yyyy")
+                });
+            }
+
+            _allDocs = viewModels;
         }
         finally
         {
@@ -78,14 +339,118 @@ else
         }
     }
 
+    private static string FormatChangesSubtitle(int count, string version)
+    {
+        if (count <= 0)
+            return $"No changes this period · v{version}";
+        if (count == 1)
+            return $"1 registered change · v{version}";
+        return $"{count} registered changes · v{version}";
+    }
+
+    private static string ResolveOwnerName(
+        string appName,
+        List<TeamLeaderMapping> tlMappings,
+        List<FunctionalUnitMapping> fuMappings)
+    {
+        var directTl = tlMappings.FirstOrDefault(t => t.SourceValue.Equals(appName, StringComparison.OrdinalIgnoreCase));
+        if (directTl != null && !string.IsNullOrWhiteSpace(directTl.TeamLeaderName))
+            return directTl.TeamLeaderName;
+
+        var matchingFu = fuMappings.FirstOrDefault(f =>
+            f.FunctionalUnitName.Contains(appName, StringComparison.OrdinalIgnoreCase) ||
+            f.SourceValue.Equals(appName, StringComparison.OrdinalIgnoreCase));
+
+        if (matchingFu != null)
+        {
+            var relatedSources = fuMappings
+                .Where(f => f.FunctionalUnitName == matchingFu.FunctionalUnitName)
+                .Select(f => f.SourceValue)
+                .ToList();
+
+            var fuTl = tlMappings.FirstOrDefault(t => relatedSources.Contains(t.SourceValue, StringComparer.OrdinalIgnoreCase));
+            if (fuTl != null && !string.IsNullOrWhiteSpace(fuTl.TeamLeaderName))
+                return fuTl.TeamLeaderName;
+        }
+
+        return appName.ToUpperInvariant() switch
+        {
+            "POS" => "Md Maruf Ul Alam",
+            "DMS" => "Md Maruf Ul Alam",
+            "SALES FORCE APP" => "Maksud Saifullah Pulak",
+            "TECHVAN" => "Md Amirul Islam",
+            "AMS" => "Maksud Saifullah Pulak",
+            "LEA" => "Minhaz Uddin Ahmed",
+            _ => "Md Amirul Islam"
+        };
+    }
+
     private void OpenDocument(Guid documentId)
     {
         NavigationManager.NavigateTo($"/cm-review/document-preparation/{documentId}");
     }
 
-    private string GetMonthName(int monthNumber)
+    private void ToggleDocMenu(Guid docId)
     {
-        if (monthNumber < 1 || monthNumber > 12) return monthNumber.ToString();
-        return new DateTime(2000, monthNumber, 1).ToString("MMMM");
+        _openMenuDocId = _openMenuDocId == docId ? null : docId;
+    }
+
+    private void CloseDocMenu()
+    {
+        _openMenuDocId = null;
+    }
+
+    private async Task ToggleFinalizeStatusAsync(DocRowViewModel row)
+    {
+        try
+        {
+            var entity = await DbContext.CMReviewDocuments.FindAsync(row.Id);
+            if (entity != null)
+            {
+                if (entity.Status == CMReviewDocumentStatus.Finalized)
+                {
+                    entity.Status = CMReviewDocumentStatus.Draft;
+                    entity.FinalizedDate = null;
+                }
+                else
+                {
+                    entity.Status = CMReviewDocumentStatus.Finalized;
+                    entity.FinalizedBy = "Md Amirul Islam";
+                    entity.FinalizedDate = DateTimeOffset.UtcNow;
+                }
+                await DbContext.SaveChangesAsync();
+                await LoadDocumentsAsync();
+                Snackbar.Add($"Document status updated to {(entity.Status == CMReviewDocumentStatus.Finalized ? "Finalized" : "Draft")}.", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error updating status: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteDocumentAsync(DocRowViewModel row)
+    {
+        try
+        {
+            var entity = await DbContext.CMReviewDocuments.FindAsync(row.Id);
+            if (entity != null)
+            {
+                DbContext.CMReviewDocuments.Remove(entity);
+                await DbContext.SaveChangesAsync();
+                await LoadDocumentsAsync();
+                Snackbar.Add("Document deleted.", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting document: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static string GetMonthYearName(int monthNumber, int year)
+    {
+        if (monthNumber < 1 || monthNumber > 12) return $"{monthNumber} {year}";
+        return new DateTime(year, monthNumber, 1).ToString("MMMM yyyy");
     }
 }

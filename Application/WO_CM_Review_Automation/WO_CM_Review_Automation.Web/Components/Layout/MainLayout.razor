@@ -1,6 +1,13 @@
 @inherits LayoutComponentBase
+@using Microsoft.EntityFrameworkCore
+@using WO_CM_Review_Automation.Domain.Entities.CMReview
+@using WO_CM_Review_Automation.Infrastructure.Data
+@using WO_CM_Review_Automation.Web.Services
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
+@inject IServiceScopeFactory ScopeFactory
+@inject UserSessionService UserSession
+@inject ISnackbar Snackbar
 @implements IDisposable
 
 <MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_enterpriseTheme" />
@@ -9,69 +16,131 @@
 <MudPopoverProvider />
 
 <div class="@(_isDarkMode ? "dark-mode" : "")">
+    @if (IsLoginPage())
+    {
+        @Body
+    }
+    else
+    {
     <MudLayout>
-        
-        <MudDrawer @bind-Open="_drawerOpen" Elevation="0" ClipMode="DrawerClipMode.Never" Variant="@DrawerVariant.Responsive" OpenMiniOnHover="true" MiniWidth="72px" Width="280px" Class="ent-drawer print-hide">
-            <MudDrawerHeader Class="d-flex align-center px-4 py-4" Style="height: 64px; border-bottom: 1px solid var(--color-border-subtle);">
-                <MudIcon Icon="@Icons.Material.Filled.Layers" Size="Size.Large" Color="Color.Primary" Class="mr-3" />
-                <div class="d-flex flex-column" style="overflow: hidden; white-space: nowrap;">
-                    <MudText Typo="Typo.body1" Class="font-weight-bold" Style="line-height: 1.2; color: var(--color-text-primary);">WO CM Review</MudText>
-                    <MudText Typo="Typo.caption" Style="line-height: 1; color: var(--color-text-secondary); letter-spacing: 0.5px;">AUTOMATION</MudText>
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="0" ClipMode="DrawerClipMode.Never" Variant="@DrawerVariant.Responsive" Width="240px" Class="ent-drawer print-hide">
+            <!-- Brand Header -->
+            <div class="ent-brand-header">
+                <div class="ent-brand-logo">
+                    <MudIcon Icon="@Icons.Material.Outlined.Layers" Size="Size.Small" Style="color: #ffffff;" />
                 </div>
-            </MudDrawerHeader>
+                <div class="d-flex flex-column" style="overflow: hidden;">
+                    <span class="ent-brand-title">WO-CM Review Automation</span>
+                </div>
+            </div>
 
-            <NavMenu />
-            
-            <div class="mt-auto px-4 pb-4 pt-4" style="background: linear-gradient(to top, var(--color-bg-sidebar) 80%, transparent);">
-                <MudButton Href="/about" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Info" FullWidth="true" Style="justify-content: flex-start; color: var(--color-text-muted);" Class="mb-2">About (v1.0.0)</MudButton>
+            <NavMenu PendingDocumentsCount="@_pendingDocsCount" />
+
+            <!-- Sidebar Bottom Cycle Widget -->
+            <div class="mt-auto px-3 pb-3 pt-2">
+                <div class="ent-cycle-card">
+                    <div class="ent-cycle-title">@_cycleMonthLabel cycle</div>
+                    <div class="ent-cycle-subtitle">@_finalizedDocsCount of @_totalAppsCount documents finalized</div>
+                    <div class="ent-cycle-bars">
+                        @for (int i = 0; i < _totalAppsCount; i++)
+                        {
+                            var isDone = i < _finalizedDocsCount;
+                            <div class="ent-cycle-segment @(isDone ? "done" : "")"></div>
+                        }
+                    </div>
+                </div>
+                <div class="ent-version-text">Version 1.0.0</div>
             </div>
         </MudDrawer>
 
         <MudAppBar Elevation="0" Class="ent-appbar print-hide" ClipMode="DrawerClipMode.Never">
-            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" Class="mr-2" OnClick="@(() => _drawerOpen = !_drawerOpen)" />
-            
-            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="color: var(--color-text-primary);">
-                @GetPageContext()
-            </MudText>
-            
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" Size="Size.Small" Class="mr-2 d-md-none" OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+
+            <div class="ent-breadcrumb">
+                <span class="ent-breadcrumb-section">@GetPageSection()</span>
+                <span class="ent-breadcrumb-sep">›</span>
+                <span class="ent-breadcrumb-page">@GetPageContext()</span>
+            </div>
+
             <MudSpacer />
-            
-            <div class="d-flex align-center ent-gap-md">
-                <MudText Typo="Typo.body2" Class="font-weight-medium d-none d-md-flex" Style="color: var(--color-text-secondary);">@DateTime.Now.ToString("dd MMM yyyy HH:mm")</MudText>
-                
-                <MudDivider Vertical="true" FlexItem="true" Class="mx-2 d-none d-md-flex" />
-                
-                <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit" OnClick="ToggleDarkMode" />
-                
-                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true" Class="ml-2">
-                    <ActivatorContent>
-                        <MudButton Class="pa-0 text-none" Style="background: transparent;">
-                            <div class="d-none d-md-flex flex-column text-right mr-3">
-                                <MudText Typo="Typo.body2" Class="font-weight-bold" Style="color: var(--color-text-primary); line-height: 1.2;">Current User</MudText>
-                                <MudText Typo="Typo.caption" Style="color: var(--color-text-muted); line-height: 1;">Administrator</MudText>
-                            </div>
-                            <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Medium" Class="font-weight-bold" Style="border: 2px solid var(--color-border-subtle);">CU</MudAvatar>
-                        </MudButton>
-                    </ActivatorContent>
-                    <ChildContent>
-                        <div class="pa-4 d-md-none border-b-1" style="border-color: var(--color-border-subtle);">
-                            <MudText Typo="Typo.body2" Class="font-weight-bold" Style="color: var(--color-text-primary);">Current User</MudText>
-                            <MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">Administrator</MudText>
+
+            <div class="d-flex align-center ent-topbar-right">
+                <!-- Search Input Pill -->
+                <div class="ent-topbar-search d-none d-sm-flex">
+                    <MudIcon Icon="@Icons.Material.Outlined.Search" Size="Size.Small" Class="ent-search-icon" />
+                    <input type="text"
+                           placeholder="Search WO, report, app..."
+                           value="@_searchQuery"
+                           @oninput="@(e => _searchQuery = e.Value?.ToString() ?? "")"
+                           @onkeydown="HandleSearchKeyDown"
+                           class="ent-search-input" />
+                    <span class="ent-search-kbd">⌘K</span>
+                </div>
+
+                <!-- Date / Time -->
+                <span class="ent-topbar-datetime d-none d-lg-inline">
+                    @DateTime.Now.ToString("ddd, dd MMM yyyy · HH:mm")
+                </span>
+
+                <!-- Theme Toggle -->
+                <button type="button" class="ent-icon-btn" @onclick="ToggleDarkMode" title="Toggle theme">
+                    <MudIcon Icon="@(_isDarkMode ? Icons.Material.Outlined.LightMode : Icons.Material.Outlined.DarkMode)" Size="Size.Small" />
+                </button>
+
+                <!-- User Profile Menu with Settings & Logout -->
+                <div class="ent-action-menu-wrap" @onclick:stopPropagation="true">
+                    <div class="ent-user-trigger" @onclick="@(() => _userMenuOpen = !_userMenuOpen)">
+                        <div class="d-none d-md-flex flex-column text-right">
+                            <span class="ent-user-name">@UserSession.Profile.FullName</span>
+                            <span class="ent-user-role">@UserSession.Profile.Role</span>
                         </div>
-                        <MudMenuItem Href="/logout" Icon="@Icons.Material.Filled.Logout" IconColor="Color.Error">
-                            <MudText Color="Color.Error">Logout</MudText>
-                        </MudMenuItem>
-                    </ChildContent>
-                </MudMenu>
+                        <div class="ent-user-avatar">@UserSession.Profile.AvatarInitials</div>
+                    </div>
+
+                    @if (_userMenuOpen)
+                    {
+                        <div class="ent-action-menu-backdrop" @onclick="@(() => _userMenuOpen = false)"></div>
+                        <div class="ent-action-menu-dropdown" style="min-width: 220px;">
+                            <div class="px-3 py-2" style="border-bottom: 1px solid var(--color-border-subtle); margin-bottom: 4px;">
+                                <div style="font-size: 0.8rem; font-weight: 600; color: var(--color-text-primary);">@UserSession.Profile.FullName</div>
+                                <div style="font-size: 0.69rem; color: var(--color-text-muted);">@UserSession.Profile.Email</div>
+                            </div>
+
+                            <button type="button"
+                                    class="ent-action-menu-item"
+                                    @onclick="@(() => { _userMenuOpen = false; NavigationManager.NavigateTo("/settings"); })">
+                                <MudIcon Icon="@Icons.Material.Outlined.Settings" Style="font-size: 16px; color: #64748b;" />
+                                <span>User settings</span>
+                            </button>
+
+                            <button type="button"
+                                    class="ent-action-menu-item"
+                                    @onclick="@(() => { _userMenuOpen = false; NavigationManager.NavigateTo("/mappings"); })">
+                                <MudIcon Icon="@Icons.Material.Outlined.Tune" Style="font-size: 16px; color: #64748b;" />
+                                <span>Mapping configuration</span>
+                            </button>
+
+                            <div class="ent-action-menu-divider"></div>
+
+                            <button type="button"
+                                    class="ent-action-menu-item danger"
+                                    @onclick="HandleLogoutAsync">
+                                <MudIcon Icon="@Icons.Material.Outlined.Logout" Style="font-size: 16px;" />
+                                <span>Sign out</span>
+                            </button>
+                        </div>
+                    }
+                </div>
             </div>
         </MudAppBar>
 
         <MudMainContent Class="ent-main-content">
-            <MudContainer MaxWidth="MaxWidth.False" Class="ent-p-lg">
+            <div class="ent-page-container">
                 @Body
-            </MudContainer>
+            </div>
         </MudMainContent>
     </MudLayout>
+    }
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
@@ -82,40 +151,228 @@
 
 @code {
     private bool _drawerOpen = true;
-    private bool _isDarkMode = true;
+    private bool _isDarkMode = false;
+    private bool _userMenuOpen = false;
+    private string _searchQuery = string.Empty;
 
-    protected override void OnInitialized()
+    private string _cycleMonthLabel = DateTime.Now.ToString("MMMM yyyy");
+    private int _finalizedDocsCount = 3;
+    private int _totalAppsCount = 6;
+    private int _pendingDocsCount = 3;
+
+    protected override async Task OnInitializedAsync()
     {
         NavigationManager.LocationChanged += OnLocationChanged;
+        UserSession.OnStateChanged += OnUserStateChanged;
+        await LoadCycleStatsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await CheckBrowserAuthAsync();
+        }
+    }
+
+    private async Task CheckBrowserAuthAsync()
+    {
+        if (IsLoginPage())
+            return;
+
+        if (UserSession.IsAuthenticated)
+            return;
+
+        try
+        {
+            var token = await JSRuntime.InvokeAsync<string>("woAuthSession.getState");
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                UserSession.MarkAuthenticatedFromSession();
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+        }
+        catch
+        {
+            // Ignore JS interop errors during prerender
+            return;
+        }
+
+        NavigationManager.NavigateTo("/login");
+    }
+
+    private bool IsLoginPage()
+    {
+        var uri = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        return uri.StartsWith("login", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnUserStateChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleLogoutAsync()
+    {
+        _userMenuOpen = false;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("woAuthSession.clearState");
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+
+        UserSession.Logout();
+        Snackbar.Add("Signed out successfully.", Severity.Info, cfg => cfg.VisibleStateDuration = 1800);
+        NavigationManager.NavigateTo("/login");
+    }
+
+    private async Task LoadCycleStatsAsync()
+    {
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var activeApps = await db.ApplicationMappings
+                .Where(m => m.IsActive)
+                .Select(m => m.NormalizedName)
+                .Distinct()
+                .CountAsync();
+
+            _totalAppsCount = activeApps > 0 ? activeApps : 6;
+
+            var latestUpload = await db.UploadHistories
+                .OrderByDescending(u => u.UploadDate)
+                .FirstOrDefaultAsync();
+
+            int targetMonth = DateTime.Now.Month;
+            int targetYear = DateTime.Now.Year;
+
+            if (latestUpload != null)
+            {
+                var (m, y) = InferMonthYearFromFileName(latestUpload.FileName, latestUpload.UploadDate);
+                targetMonth = m;
+                targetYear = y;
+            }
+
+            _cycleMonthLabel = new DateTime(targetYear, targetMonth, 1).ToString("MMMM yyyy");
+
+            var docs = await db.CMReviewDocuments
+                .OrderByDescending(d => d.ReportingYear)
+                .ThenByDescending(d => d.ReportingMonth)
+                .ToListAsync();
+
+            var periodDocs = docs.Where(d => d.ReportingMonth == targetMonth && d.ReportingYear == targetYear).ToList();
+            if (!periodDocs.Any() && docs.Any())
+            {
+                var latestDoc = docs.First();
+                periodDocs = docs.Where(d => d.ReportingMonth == latestDoc.ReportingMonth && d.ReportingYear == latestDoc.ReportingYear).ToList();
+            }
+
+            _finalizedDocsCount = periodDocs
+                .Where(d => d.Status == CMReviewDocumentStatus.Finalized)
+                .Select(d => d.Application)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+
+            _pendingDocsCount = Math.Max(0, _totalAppsCount - _finalizedDocsCount);
+        }
+        catch
+        {
+            // Keep sensible defaults if DB is still migrating
+        }
+    }
+
+    private static (int Month, int Year) InferMonthYearFromFileName(string? fileName, DateTimeOffset fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(fileName))
+        {
+            var monthNames = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["january"] = 1, ["jan"] = 1,
+                ["february"] = 2, ["feb"] = 2,
+                ["march"] = 3, ["mar"] = 3,
+                ["april"] = 4, ["apr"] = 4,
+                ["may"] = 5,
+                ["june"] = 6, ["jun"] = 6,
+                ["july"] = 7, ["jul"] = 7,
+                ["august"] = 8, ["aug"] = 8,
+                ["september"] = 9, ["sept"] = 9, ["sep"] = 9,
+                ["october"] = 10, ["oct"] = 10,
+                ["november"] = 11, ["nov"] = 11,
+                ["december"] = 12, ["dec"] = 12
+            };
+
+            var match = System.Text.RegularExpressions.Regex.Match(
+                fileName,
+                @"(january|february|march|april|may|june|july|august|september|sept|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)['\-\s_]*(\d{4})",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (match.Success &&
+                monthNames.TryGetValue(match.Groups[1].Value, out int parsedMonth) &&
+                int.TryParse(match.Groups[2].Value, out int parsedYear))
+            {
+                return (parsedMonth, parsedYear);
+            }
+        }
+        return (fallback.Month, fallback.Year);
     }
 
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
+        UserSession.OnStateChanged -= OnUserStateChanged;
     }
 
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        InvokeAsync(StateHasChanged);
+        _userMenuOpen = false;
+        await CheckBrowserAuthAsync();
+        await LoadCycleStatsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            NavigationManager.NavigateTo("/wo-list");
+        }
+    }
+
+    private string GetPageSection()
+    {
+        var uri = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        if (string.IsNullOrWhiteSpace(uri) || uri == "/")
+            return "Workspace";
+        if (uri.StartsWith("upload", StringComparison.OrdinalIgnoreCase) || uri.StartsWith("reports", StringComparison.OrdinalIgnoreCase) || uri.StartsWith("report/", StringComparison.OrdinalIgnoreCase) || string.Equals(uri, "report", StringComparison.OrdinalIgnoreCase))
+            return "Work Order Studio";
+        if (uri.StartsWith("wo-list", StringComparison.OrdinalIgnoreCase))
+            return "Data";
+        if (uri.StartsWith("cm-review", StringComparison.OrdinalIgnoreCase))
+            return "CM Review studio";
+        return "System";
     }
 
     private string GetPageContext()
     {
         var uri = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
-        
+
         if (string.IsNullOrWhiteSpace(uri) || uri == "/") return "Dashboard";
-        
-        if (uri.StartsWith("upload", StringComparison.OrdinalIgnoreCase)) return "Upload Excel";
-        if (uri.StartsWith("wo-list", StringComparison.OrdinalIgnoreCase)) return "WO Master List";
-        if (uri.StartsWith("reports", StringComparison.OrdinalIgnoreCase)) return "Monthly Reports";
-        if (uri.StartsWith("cm-reviews", StringComparison.OrdinalIgnoreCase)) return "Document List";
-        if (uri.StartsWith("cm-review/document-preparation", StringComparison.OrdinalIgnoreCase)) return "Document Preparation";
-        if (uri.StartsWith("mappings", StringComparison.OrdinalIgnoreCase)) return "Mapping Configuration";
-        if (uri.StartsWith("history", StringComparison.OrdinalIgnoreCase)) return "Upload History";
+        if (uri.StartsWith("upload", StringComparison.OrdinalIgnoreCase)) return "Upload data";
+        if (uri.StartsWith("wo-list", StringComparison.OrdinalIgnoreCase)) return "Work Order Archive";
+        if (uri.StartsWith("reports", StringComparison.OrdinalIgnoreCase)) return "WO Count";
+        if (uri.StartsWith("cm-reviews", StringComparison.OrdinalIgnoreCase)) return "CM Review Document";
+        if (uri.StartsWith("cm-review/document-preparation", StringComparison.OrdinalIgnoreCase)) return "Prepare document";
+        if (uri.StartsWith("mappings", StringComparison.OrdinalIgnoreCase)) return "Mapping";
         if (uri.StartsWith("settings", StringComparison.OrdinalIgnoreCase)) return "Settings";
-        if (uri.StartsWith("report/", StringComparison.OrdinalIgnoreCase)) return "Report Details";
-        
-        return "Application";
+        if (uri.StartsWith("report", StringComparison.OrdinalIgnoreCase)) return "Report details";
+
+        return "Dashboard";
     }
 
     private void ToggleDarkMode()
@@ -127,19 +384,19 @@
     {
         PaletteLight = new PaletteLight()
         {
-            Primary = "#2563eb", /* var(--color-accent-blue) */
-            Secondary = "#475569", /* var(--color-text-secondary) */
+            Primary = "#2563eb",
+            Secondary = "#475569",
             Info = "#0ea5e9",
             Success = "#10b981",
             Warning = "#f59e0b",
             Error = "#ef4444",
-            Background = "#f4f7f9", /* var(--color-bg-app) */
-            Surface = "#ffffff", /* var(--color-bg-surface) */
-            DrawerBackground = "#ffffff",
+            Background = "#fcfcfd",
+            Surface = "#ffffff",
+            DrawerBackground = "#fafafa",
             AppbarBackground = "#ffffff",
-            AppbarText = "#1e293b",
-            LinesDefault = "#cbd5e1", /* var(--color-border-standard) */
-            TextPrimary = "#1e293b", /* var(--color-text-primary) */
+            AppbarText = "#0f172a",
+            LinesDefault = "#e2e8f0",
+            TextPrimary = "#0f172a",
             TextSecondary = "#475569",
             TextDisabled = "#94a3b8"
         },
@@ -151,20 +408,20 @@
             Success = "#34d399",
             Warning = "#fbbf24",
             Error = "#fb7185",
-            Background = "#0B1120", /* var(--color-bg-app) */
-            Surface = "#1e293b", /* var(--color-bg-surface) */
-            DrawerBackground = "#0f172a", /* var(--color-bg-sidebar) */
-            AppbarBackground = "#0f172a", /* var(--color-bg-sidebar) */
+            Background = "#0B1120",
+            Surface = "#1e293b",
+            DrawerBackground = "#0f172a",
+            AppbarBackground = "#0f172a",
             AppbarText = "#f8fafc",
-            LinesDefault = "#334155", /* var(--color-border-standard) */
-            TextPrimary = "#f8fafc", /* var(--color-text-primary) */
+            LinesDefault = "#334155",
+            TextPrimary = "#f8fafc",
             TextSecondary = "#cbd5e1",
             TextDisabled = "#475569"
         },
         LayoutProperties = new LayoutProperties()
         {
             DefaultBorderRadius = "8px",
-            AppbarHeight = "64px"
+            AppbarHeight = "56px"
         }
     };
 }

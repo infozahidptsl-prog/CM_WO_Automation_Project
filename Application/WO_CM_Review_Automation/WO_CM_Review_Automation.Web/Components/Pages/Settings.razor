@@ -1,10 +1,417 @@
 @page "/settings"
+@using WO_CM_Review_Automation.Web.Services
+@using WO_CM_Review_Automation.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject UserSessionService UserSession
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
 
 <PageTitle>Settings - WO CM Review</PageTitle>
 
-<EnterprisePageHeader Title="System Settings" Subtitle="Configure enterprise rules, mapping, and integrations" />
+<div class="usrset-wrapper">
+    <!-- Top Header -->
+    <div class="usrset-header-row">
+        <div>
+            <h1 class="usrset-title">User &amp; workspace settings</h1>
+            <div class="usrset-subtitle">Manage your personal profile, security credentials, workspace preferences, and active session.</div>
+        </div>
 
-<EnterpriseEmptyState 
-    Icon="@Icons.Material.Filled.SettingsSuggest" 
-    Title="Settings Unavailable" 
-    Description="The settings module is currently undergoing maintenance and is not available." />
+        <div class="d-flex align-center gap-2">
+            <button type="button" class="dash-btn-outlined usrset-logout-top-btn" @onclick="SignOutAsync">
+                <MudIcon Icon="@Icons.Material.Outlined.Logout" Size="Size.Small" Style="font-size: 15px;" />
+                <span>Sign out</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- User Summary Hero Banner -->
+    <div class="usrset-profile-banner">
+        <div class="usrset-profile-left">
+            <div class="usrset-avatar-lg">
+                @UserSession.Profile.AvatarInitials
+            </div>
+            <div class="usrset-profile-info">
+                <div class="d-flex align-center gap-2 flex-wrap">
+                    <h2 class="usrset-profile-name">@UserSession.Profile.FullName</h2>
+                    <span class="usrset-role-badge">@UserSession.Profile.Role</span>
+                </div>
+                <div class="usrset-profile-meta">
+                    <span>@UserSession.Profile.JobTitle</span>
+                    <span class="usrset-meta-dot">·</span>
+                    <span>@UserSession.Profile.Email</span>
+                </div>
+                <div class="usrset-profile-org">
+                    <MudIcon Icon="@Icons.Material.Outlined.Business" Style="font-size: 13px;" />
+                    <span>@UserSession.Profile.Division · @UserSession.Profile.Department</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="usrset-profile-stats">
+            <div class="usrset-mini-stat">
+                <span class="usrset-mini-stat-val">@_uploadsCount</span>
+                <span class="usrset-mini-stat-lbl">Uploaded datasets</span>
+            </div>
+            <div class="usrset-mini-stat">
+                <span class="usrset-mini-stat-val">@_docsCount</span>
+                <span class="usrset-mini-stat-lbl">CM Review docs</span>
+            </div>
+            <div class="usrset-mini-stat">
+                <span class="usrset-mini-stat-val">@_appsCount</span>
+                <span class="usrset-mini-stat-lbl">Mapped apps</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Segmented Navigation Tabs -->
+    <div class="usrset-tabs">
+        <button type="button"
+                class="usrset-tab @(_activeTab == SettingsTab.Profile ? "active" : "")"
+                @onclick="@(() => _activeTab = SettingsTab.Profile)">
+            <MudIcon Icon="@Icons.Material.Outlined.PersonOutline" Style="font-size: 15px;" />
+            <span>Profile &amp; Organization</span>
+        </button>
+
+        <button type="button"
+                class="usrset-tab @(_activeTab == SettingsTab.Security ? "active" : "")"
+                @onclick="@(() => _activeTab = SettingsTab.Security)">
+            <MudIcon Icon="@Icons.Material.Outlined.Lock" Style="font-size: 15px;" />
+            <span>Password &amp; Security</span>
+        </button>
+
+        <button type="button"
+                class="usrset-tab @(_activeTab == SettingsTab.Preferences ? "active" : "")"
+                @onclick="@(() => _activeTab = SettingsTab.Preferences)">
+            <MudIcon Icon="@Icons.Material.Outlined.Tune" Style="font-size: 15px;" />
+            <span>Workspace Preferences</span>
+        </button>
+    </div>
+
+    <!-- Tab 1: Profile & Organization -->
+    @if (_activeTab == SettingsTab.Profile)
+    {
+        <div class="usrset-card">
+            <div class="usrset-card-header">
+                <div>
+                    <h3 class="usrset-card-title">Personal &amp; Organization Details</h3>
+                    <p class="usrset-card-desc">Your name and organization details are used in the top navigation bar and as the default reviewer/finalizer on CM Review documents.</p>
+                </div>
+            </div>
+
+            <div class="usrset-form-grid">
+                <div class="usrset-field">
+                    <label>Full Name</label>
+                    <input type="text" class="usrset-input" @bind="_editModel.FullName" placeholder="e.g. Md Amirul Islam" />
+                </div>
+
+                <div class="usrset-field">
+                    <label>Username (Sign-in ID)</label>
+                    <input type="text" class="usrset-input mono" @bind="_editModel.Username" placeholder="e.g. admin" />
+                </div>
+
+                <div class="usrset-field">
+                    <label>Email Address</label>
+                    <input type="email" class="usrset-input" @bind="_editModel.Email" placeholder="name@company.com" />
+                </div>
+
+                <div class="usrset-field">
+                    <label>Phone / Contact Number</label>
+                    <input type="text" class="usrset-input" @bind="_editModel.Phone" placeholder="+880 19..." />
+                </div>
+
+                <div class="usrset-field">
+                    <label>Role</label>
+                    <select class="usrset-input" @bind="_editModel.Role">
+                        <option value="Administrator">Administrator</option>
+                        <option value="Team Leader / POC">Team Leader / POC</option>
+                        <option value="CM Reviewer">CM Reviewer</option>
+                        <option value="Auditor">Auditor</option>
+                    </select>
+                </div>
+
+                <div class="usrset-field">
+                    <label>Job Title / Designation</label>
+                    <input type="text" class="usrset-input" @bind="_editModel.JobTitle" placeholder="Lead Engineer · Change Management" />
+                </div>
+
+                <div class="usrset-field">
+                    <label>Division</label>
+                    <input type="text" class="usrset-input" @bind="_editModel.Division" placeholder="Business Support · Service & Operations" />
+                </div>
+
+                <div class="usrset-field">
+                    <label>Department / Unit</label>
+                    <input type="text" class="usrset-input" @bind="_editModel.Department" placeholder="Support Service" />
+                </div>
+            </div>
+
+            <div class="usrset-card-footer">
+                <span class="usrset-footer-hint">Changes apply immediately across the workspace header and future exports.</span>
+                <div class="d-flex align-center gap-2">
+                    <button type="button" class="dash-btn-outlined" @onclick="ResetProfileEdits">Reset</button>
+                    <button type="button" class="dash-btn-primary" @onclick="SaveProfileChanges">
+                        <MudIcon Icon="@Icons.Material.Outlined.Check" Style="font-size: 15px;" />
+                        <span>Save profile</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Tab 2: Password & Security -->
+    @if (_activeTab == SettingsTab.Security)
+    {
+        <div class="usrset-two-col">
+            <div class="usrset-card">
+                <div class="usrset-card-header">
+                    <div>
+                        <h3 class="usrset-card-title">Change Sign-In Password</h3>
+                        <p class="usrset-card-desc">Update the password used to sign in to the WO · CM Review portal.</p>
+                    </div>
+                </div>
+
+                <div class="usrset-stack-fields">
+                    <div class="usrset-field">
+                        <label>Current Password</label>
+                        <input type="password" class="usrset-input" @bind="_currentPassword" placeholder="Enter current password" />
+                    </div>
+
+                    <div class="usrset-field">
+                        <label>New Password</label>
+                        <input type="password" class="usrset-input" @bind="_newPassword" placeholder="At least 4 characters" />
+                    </div>
+
+                    <div class="usrset-field">
+                        <label>Confirm New Password</label>
+                        <input type="password" class="usrset-input" @bind="_confirmPassword" placeholder="Re-enter new password" />
+                    </div>
+                </div>
+
+                <div class="usrset-card-footer">
+                    <span class="usrset-footer-hint">Last changed @UserSession.Profile.LastPasswordChanged.ToLocalTime().ToString("MMM dd, yyyy")</span>
+                    <button type="button" class="dash-btn-primary" @onclick="UpdatePassword">
+                        <MudIcon Icon="@Icons.Material.Outlined.Key" Style="font-size: 15px;" />
+                        <span>Update password</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="usrset-card">
+                <div class="usrset-card-header">
+                    <div>
+                        <h3 class="usrset-card-title">Active Session &amp; Access</h3>
+                        <p class="usrset-card-desc">Your current browser authentication state and session controls.</p>
+                    </div>
+                </div>
+
+                <div class="usrset-session-box">
+                    <div class="usrset-session-row">
+                        <div>
+                            <div class="usrset-session-title">Current Workstation Session</div>
+                            <div class="usrset-session-sub">Signed in as <strong>@UserSession.Profile.Username</strong> (@UserSession.Profile.Role)</div>
+                        </div>
+                        <span class="dash-doc-badge finalized">
+                            <span class="dash-doc-dot"></span>Active
+                        </span>
+                    </div>
+
+                    <div class="usrset-session-kv">
+                        <span>Session started</span>
+                        <span>@((UserSession.LastLoginTime ?? DateTimeOffset.Now).ToLocalTime().ToString("dd MMM yyyy · HH:mm"))</span>
+                    </div>
+                    <div class="usrset-session-kv">
+                        <span>Authentication mode</span>
+                        <span>Enterprise Local Credentials</span>
+                    </div>
+                </div>
+
+                <div class="usrset-danger-zone">
+                    <div>
+                        <div class="usrset-danger-title">Sign out of workspace</div>
+                        <div class="usrset-danger-sub">End your current session and return to the login screen.</div>
+                    </div>
+                    <button type="button" class="usrset-btn-danger" @onclick="SignOutAsync">
+                        <MudIcon Icon="@Icons.Material.Outlined.Logout" Style="font-size: 15px;" />
+                        <span>Sign out now</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Tab 3: Workspace Preferences -->
+    @if (_activeTab == SettingsTab.Preferences)
+    {
+        <div class="usrset-card">
+            <div class="usrset-card-header">
+                <div>
+                    <h3 class="usrset-card-title">Document &amp; Report Defaults</h3>
+                    <p class="usrset-card-desc">Configure default versions and display behaviors for CM Review documents and WO Count reports.</p>
+                </div>
+            </div>
+
+            <div class="usrset-form-grid mb-4">
+                <div class="usrset-field">
+                    <label>Default Document Version</label>
+                    <input type="text" class="usrset-input mono" @bind="_editModel.DefaultDocumentVersion" placeholder="1.0" />
+                </div>
+
+                <div class="usrset-field">
+                    <label>Default Template Version</label>
+                    <input type="text" class="usrset-input mono" @bind="_editModel.DefaultTemplateVersion" placeholder="1.0" />
+                </div>
+            </div>
+
+            <div class="usrset-toggles-list">
+                <div class="usrset-toggle-row">
+                    <div>
+                        <div class="usrset-toggle-title">Show total row by default in WO Count reports</div>
+                        <div class="usrset-toggle-sub">Automatically display the bottom summary total row when opening Monthly Summary and CM Review tables.</div>
+                    </div>
+                    <label class="prep-switch">
+                        <input type="checkbox" @bind="_editModel.AutoShowTotalRow" />
+                        <span class="prep-switch-slider"></span>
+                    </label>
+                </div>
+
+                <div class="usrset-toggle-row">
+                    <div>
+                        <div class="usrset-toggle-title">Notify when monthly cycle documents are finalized</div>
+                        <div class="usrset-toggle-sub">Show confirmation toasts and update the sidebar cycle progress bar when an application review is locked.</div>
+                    </div>
+                    <label class="prep-switch">
+                        <input type="checkbox" @bind="_editModel.NotifyOnCycleCompletion" />
+                        <span class="prep-switch-slider"></span>
+                    </label>
+                </div>
+
+                <div class="usrset-toggle-row">
+                    <div>
+                        <div class="usrset-toggle-title">Compact table row density in WO Archive</div>
+                        <div class="usrset-toggle-sub">Fit more work order rows on screen before scrolling.</div>
+                    </div>
+                    <label class="prep-switch">
+                        <input type="checkbox" @bind="_editModel.CompactTableDensity" />
+                        <span class="prep-switch-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="usrset-card-footer">
+                <span class="usrset-footer-hint">Preferences are persisted for your account.</span>
+                <button type="button" class="dash-btn-primary" @onclick="SaveProfileChanges">
+                    <MudIcon Icon="@Icons.Material.Outlined.Check" Style="font-size: 15px;" />
+                    <span>Save preferences</span>
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private enum SettingsTab { Profile, Security, Preferences }
+    private SettingsTab _activeTab = SettingsTab.Profile;
+
+    private UserProfileData _editModel = new();
+    private string _currentPassword = string.Empty;
+    private string _newPassword = string.Empty;
+    private string _confirmPassword = string.Empty;
+
+    private int _uploadsCount = 0;
+    private int _docsCount = 0;
+    private int _appsCount = 6;
+
+    protected override async Task OnInitializedAsync()
+    {
+        LoadEditModelFromSession();
+
+        try
+        {
+            _uploadsCount = await DbContext.UploadHistories.CountAsync();
+            _docsCount = await DbContext.CMReviewDocuments.CountAsync();
+            var activeApps = await DbContext.ApplicationMappings
+                .Where(a => a.IsActive)
+                .Select(a => a.NormalizedName)
+                .Distinct()
+                .CountAsync();
+            if (activeApps > 0) _appsCount = activeApps;
+        }
+        catch
+        {
+            // Keep defaults if DB busy
+        }
+    }
+
+    private void LoadEditModelFromSession()
+    {
+        var p = UserSession.Profile;
+        _editModel = new UserProfileData
+        {
+            FullName = p.FullName,
+            Email = p.Email,
+            Username = p.Username,
+            Role = p.Role,
+            JobTitle = p.JobTitle,
+            Division = p.Division,
+            Department = p.Department,
+            Phone = p.Phone,
+            DefaultDocumentVersion = p.DefaultDocumentVersion,
+            DefaultTemplateVersion = p.DefaultTemplateVersion,
+            AutoShowTotalRow = p.AutoShowTotalRow,
+            NotifyOnCycleCompletion = p.NotifyOnCycleCompletion,
+            CompactTableDensity = p.CompactTableDensity
+        };
+    }
+
+    private void ResetProfileEdits()
+    {
+        LoadEditModelFromSession();
+        Snackbar.Add("Changes reset to saved profile.", Severity.Info);
+    }
+
+    private void SaveProfileChanges()
+    {
+        if (string.IsNullOrWhiteSpace(_editModel.FullName) || string.IsNullOrWhiteSpace(_editModel.Username))
+        {
+            Snackbar.Add("Full Name and Username cannot be empty.", Severity.Warning);
+            return;
+        }
+
+        UserSession.UpdateProfile(_editModel);
+        Snackbar.Add("User settings saved successfully.", Severity.Success);
+    }
+
+    private void UpdatePassword()
+    {
+        var (success, message) = UserSession.ChangePassword(_currentPassword, _newPassword, _confirmPassword);
+        if (success)
+        {
+            _currentPassword = string.Empty;
+            _newPassword = string.Empty;
+            _confirmPassword = string.Empty;
+            Snackbar.Add(message, Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add(message, Severity.Error);
+        }
+    }
+
+    private async Task SignOutAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("woAuthSession.clearState");
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+
+        UserSession.Logout();
+        Snackbar.Add("You have been signed out.", Severity.Info);
+        NavigationManager.NavigateTo("/login");
+    }
+}

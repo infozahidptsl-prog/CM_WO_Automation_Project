@@ -3,418 +3,569 @@
 @using WO_CM_Review_Automation.Application.ViewModels.CMReview
 @using WO_CM_Review_Automation.Domain.Entities.CMReview
 @inject WO_CM_Review_Automation.Application.Mappings.Interfaces.IMappingService MappingService
+@inject NavigationManager NavigationManager
 
+<PageTitle>Prepare document - WO CM Review</PageTitle>
 
-<PageTitle>CM Review Document Preparation</PageTitle>
+<div class="prep-wrapper print-hide">
+    <!-- Back Link -->
+    <button type="button" class="repview-back-link mb-2" @onclick="@(() => NavigationManager.NavigateTo("/cm-reviews"))">
+        <MudIcon Icon="@Icons.Material.Outlined.ArrowBack" Style="font-size: 14px;" />
+        <span>CM Review Document</span>
+    </button>
 
-<PageTitle>CM Review Document Preparation</PageTitle>
+    <!-- Top Header & Period Selector Bar -->
+    <div class="prep-header-bar">
+        <div class="prep-header-left">
+            <h1 class="prep-title">CM Review document</h1>
+            <div class="prep-status-row">
+                @if (DocumentModel.Status == CMReviewDocumentStatus.Finalized)
+                {
+                    <span class="dash-doc-badge finalized">
+                        <span class="dash-doc-dot"></span>Finalized
+                    </span>
+                    <span class="prep-status-meta">Locked · v@(DocumentModel.DocumentVersion)</span>
+                }
+                else
+                {
+                    <span class="dash-doc-badge draft">
+                        <span class="dash-doc-dot"></span>Draft
+                    </span>
+                    <span class="prep-status-meta">Unsaved changes</span>
+                }
+            </div>
+        </div>
 
-<div class="print-hide">
-    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
-        <MudText Typo="Typo.h5" Class="mb-6" Style="font-weight: 700; color: var(--color-text-primary); letter-spacing: -0.5px;">CM Review Document Preparation</MudText>
+        <div class="prep-header-controls">
+            <div class="prep-control-group">
+                <label class="prep-control-label">Application</label>
+                <select @bind="DocumentModel.Application" class="prep-select prep-select-app">
+                    @foreach (var app in ActiveApplications)
+                    {
+                        var label = app.Equals("Techvan", StringComparison.OrdinalIgnoreCase) ? "TechVan" : app;
+                        <option value="@app">@label</option>
+                    }
+                </select>
+            </div>
+
+            <div class="prep-control-group">
+                <label class="prep-control-label">Month</label>
+                <select @bind="DocumentModel.ReportingMonth" class="prep-select prep-select-month">
+                    @for (int i = 1; i <= 12; i++)
+                    {
+                        var m = i;
+                        <option value="@m">@System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(m)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="prep-control-group">
+                <label class="prep-control-label">Year</label>
+                <select @bind="DocumentModel.ReportingYear" class="prep-select prep-select-year">
+                    @for (int y = DateTime.Now.Year - 1; y <= DateTime.Now.Year + 1; y++)
+                    {
+                        var yr = y;
+                        <option value="@yr">@yr</option>
+                    }
+                </select>
+            </div>
+
+            <div class="prep-control-group prep-control-btn-wrap">
+                <button type="button" class="dash-btn-outlined prep-reload-btn" @onclick="LoadDocumentDataAsync" disabled="@IsLoading">
+                    @(IsLoading ? "Loading..." : "Reload data")
+                </button>
+            </div>
+        </div>
+    </div>
 
     @if (IsLoading)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
-        <MudText>Loading...</MudText>
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
     }
-    else
+    else if (IsDocumentLoaded)
     {
-        <MudGrid>
-            <!-- Left Column: Data Entry -->
-            <MudItem xs="12" md="6">
-                <EnterpriseCard Class="mb-6">
-                    <div class="ent-card-header">
-                        <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">1. Initial Setup</MudText>
-                    </div>
-                    <div class="ent-p-md">
-                        <MudGrid>
-                            <MudItem xs="4">
-                                <MudSelect T="string" Label="Application" @bind-Value="DocumentModel.Application" Variant="Variant.Outlined" Required="true">
-                                    @foreach (var app in ActiveApplications)
-                                    {
-                                        <MudSelectItem Value="@app">@app</MudSelectItem>
-                                    }
-                                </MudSelect>
-                            </MudItem>
-                            <MudItem xs="4">
-                                <MudSelect T="int" Label="Month" @bind-Value="DocumentModel.ReportingMonth" Variant="Variant.Outlined" Required="true">
-                                    @for (int i = 1; i <= 12; i++)
-                                    {
-                                        var month = i;
-                                        <MudSelectItem Value="@month">@System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(month)</MudSelectItem>
-                                    }
-                                </MudSelect>
-                            </MudItem>
-                            <MudItem xs="4">
-                                <MudSelect T="int" Label="Year" @bind-Value="DocumentModel.ReportingYear" Variant="Variant.Outlined" Required="true">
-                                    @for (int i = DateTime.Now.Year - 1; i <= DateTime.Now.Year + 1; i++)
-                                    {
-                                        var year = i;
-                                        <MudSelectItem Value="@year">@year</MudSelectItem>
-                                    }
-                                </MudSelect>
-                            </MudItem>
-                            <MudItem xs="12" Class="d-flex justify-space-between mt-2">
-                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadDocumentDataAsync">Load Data</MudButton>
-                            </MudItem>
-                        </MudGrid>
-                    </div>
-                    </EnterpriseCard>
-
-                @if (IsDocumentLoaded)
-                {
-                    <!-- Document Info -->
-                    <EnterpriseCard Class="mb-6">
-                        <div class="ent-card-header">
-                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">2. Document Info</MudText>
-                        </div>
-                        <div class="ent-p-md">
-                            <MudGrid>
-                                <MudItem xs="6">
-                                    <MudTextField @bind-Value="DocumentModel.DocumentVersion" Label="Document Version" Variant="Variant.Outlined" />
-                                </MudItem>
-                                <MudItem xs="6">
-                                    <MudTextField @bind-Value="DocumentModel.TemplateVersion" Label="Template Version" Variant="Variant.Outlined" />
-                                </MudItem>
-                            </MudGrid>
-                        </div>
-                    </EnterpriseCard>
-
-                    <EnterpriseCard Class="mb-6">
-                        <div class="ent-card-header">
-                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">3. Server Evidence</MudText>
-                            <div class="action-buttons">
-                                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="AddServerEvidence">Add Server</MudButton>
-                            </div>
-                        </div>
-                        <div class="ent-p-md">
-                            @foreach (var server in DocumentModel.ServerEvidences)
-                            {
-                                <EnterpriseCard Class="ent-p-md mb-4" Style="background-color: var(--color-bg-surface-secondary)">
-                                    <MudGrid>
-                                        <MudItem xs="5">
-                                            <MudTextField @bind-Value="server.ServerIp" Label="Server IP" Variant="Variant.Outlined" />
-                                        </MudItem>
-                                        <MudItem xs="5">
-                                            <MudTextField @bind-Value="server.ServerName" Label="Server Name" Variant="Variant.Outlined" />
-                                        </MudItem>
-                                        <MudItem xs="2" Class="d-flex align-center">
-                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveServerEvidence(server))" />
-                                        </MudItem>
-                                        
-                                        <MudItem xs="12">
-                                            <MudText Typo="Typo.subtitle2">Screenshots</MudText>
-                                            <div id="@($"paste-area-{server.Id}")" 
-                                                 tabindex="0" 
-                                                 contenteditable="true"
-                                                 onkeydown="return false;"
-                                                 class="ent-paste-zone pa-4 mb-2"
-                                                 @onfocus="@(async () => await InitializeClipboardAsync(server.Id))">
-                                                <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                                    Click here and press <strong>Ctrl+V</strong> to paste a screenshot, or click the button below to upload.
-                                                </MudText>
-                                            </div>
-                                            
-                                            <MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".png, .jpg, .jpeg" MaximumFileCount="100" OnFilesChanged="@(e => UploadScreenshotsAsync(e, server.Id))">
-                                                <ActivatorContent>
-                                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
-                                                        Upload Image
-                                                    </MudButton>
-                                                </ActivatorContent>
-                                            </MudFileUpload>
-
-                                            <MudGrid Class="mt-2">
-                                                @foreach (var shot in server.Screenshots)
-                                                {
-                                                    <MudItem xs="4">
-                                                        <MudCard Elevation="2">
-                                                            <MudCardMedia Image="@(shot.Base64Data ?? $"/{shot.StorageReference}")" Height="150" />
-                                                            <MudCardContent Class="pa-2">
-                                                                <MudTextField @bind-Value="shot.Caption" Label="Caption" Margin="Margin.Dense" />
-                                                            </MudCardContent>
-                                                            <MudCardActions Class="pa-1 d-flex justify-end">
-                                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveScreenshot(server, shot))" />
-                                                            </MudCardActions>
-                                                        </MudCard>
-                                                    </MudItem>
-                                                }
-                                            </MudGrid>
-                                        </MudItem>
-                                    </MudGrid>
-                                </EnterpriseCard>
-                            }
-                        </div>
-                    </EnterpriseCard>
-
-                    <EnterpriseCard Class="mb-6">
-                        <div class="ent-card-header">
-                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">4. Change Categories</MudText>
-                            <div class="action-buttons">
-                                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="AddChangeCategory">Add Category</MudButton>
-                            </div>
-                        </div>
-                        <div class="ent-p-md">
-                            @foreach (var category in DocumentModel.ChangeCategories)
-                            {
-                                <EnterpriseCard Class="ent-p-md mb-4" Style="background-color: var(--color-bg-surface-secondary)">
-                                    <MudGrid>
-                                        <MudItem xs="8">
-                                            <MudTextField @bind-Value="category.CategoryName" Label="Category Name" Variant="Variant.Outlined" />
-                                        </MudItem>
-                                        <MudItem xs="2" Class="d-flex align-center">
-                                            <MudSwitch @bind-Value="category.HasChanges" Color="Color.Primary" Label="Changes?" />
-                                        </MudItem>
-                                        <MudItem xs="2" Class="d-flex align-center">
-                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveChangeCategory(category))" />
-                                        </MudItem>
-                                        @if (category.HasChanges)
-                                        {
-                                            <MudItem xs="12">
-                                                <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => AddChangeDetail(category))">Add Detail</MudButton>
-                                                @foreach (var detail in category.ChangeDetails)
-                                                {
-                                                    <MudGrid Class="mt-2 pl-4" Style="border-left: 2px solid var(--color-border-standard);">
-                                                        <MudItem xs="2">
-                                                            <MudTextField @bind-Value="detail.ChangeOrder" Label="Change Order" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                                                        </MudItem>
-                                                        <MudItem xs="3" Class="d-flex align-center">
-                                                            @if (!string.IsNullOrWhiteSpace(detail.ChangeType))
-                                                            {
-                                                                <MudChip T="string" Color="@(detail.ChangeType.Contains("Standard", StringComparison.OrdinalIgnoreCase) ? Color.Success : Color.Warning)" Size="Size.Small" Class="mr-2">@detail.ChangeType</MudChip>
-                                                            }
-                                                            <MudTextField @bind-Value="detail.ChangeType" Label="Change Type" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                                                        </MudItem>
-                                                        <MudItem xs="4">
-                                                            <MudTextField @bind-Value="detail.Description" Label="Description" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                                                        </MudItem>
-                                                        <MudItem xs="2">
-                                                            <MudTextField T="string" Value="@(detail.ScheduleDate?.ToString("dd-MM-yyyy hh:mm:ss tt"))" ValueChanged="@(s => { if (DateTimeOffset.TryParse(s, out var dt)) detail.ScheduleDate = dt; else detail.ScheduleDate = null; })" Label="Exec End Date" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                                                        </MudItem>
-                                                        <MudItem xs="1" Class="d-flex align-center">
-                                                            <MudIconButton Icon="@Icons.Material.Filled.RemoveCircle" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveChangeDetail(category, detail))" />
-                                                        </MudItem>
-
-                                                        @if (!category.CategoryName.Contains("Standard", StringComparison.OrdinalIgnoreCase) && !(detail.ChangeType ?? "").Contains("Standard", StringComparison.OrdinalIgnoreCase))
-                                                        {
-                                                            <!-- Deployment Screenshots for this Detail -->
-                                                            <MudItem xs="12">
-                                                                <MudText Typo="Typo.subtitle2">Deployment Screenshots</MudText>
-                                                                <div id="@($"paste-area-{detail.Id}")" 
-                                                                     tabindex="0" 
-                                                                     contenteditable="true"
-                                                                     onkeydown="return false;"
-                                                                     class="ent-paste-zone pa-4 mb-2"
-                                                                     @onfocus="@(async () => await InitializeClipboardAsync(detail.Id))">
-                                                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                                                        Click here and press <strong>Ctrl+V</strong> to paste a screenshot for this specific change.
-                                                                    </MudText>
-                                                                </div>
-                                                                
-                                                                <MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".png, .jpg, .jpeg, .docx" MaximumFileCount="100" OnFilesChanged="@(e => UploadDeploymentScreenshotsAsync(e, detail.Id))">
-                                                                    <ActivatorContent>
-                                                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
-                                                                            Upload Deployment Image / Docx
-                                                                        </MudButton>
-                                                                    </ActivatorContent>
-                                                                </MudFileUpload>
-
-                                                                <MudGrid Class="mt-2">
-                                                                    @foreach (var shot in detail.DeploymentScreenshots)
-                                                                    {
-                                                                        <MudItem xs="4">
-                                                                            <MudCard Elevation="2">
-                                                                                <MudCardMedia Image="@(shot.Base64Data ?? $"/{shot.StorageReference}")" Height="150" />
-                                                                                <MudCardContent Class="pa-2">
-                                                                                    <MudTextField @bind-Value="shot.Caption" Label="Caption" Margin="Margin.Dense" />
-                                                                                </MudCardContent>
-                                                                                <MudCardActions Class="pa-1 d-flex justify-end">
-                                                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveDeploymentScreenshot(detail, shot))" />
-                                                                                </MudCardActions>
-                                                                            </MudCard>
-                                                                        </MudItem>
-                                                                    }
-                                                                </MudGrid>
-                                                            </MudItem>
-                                                        }
-                                                    </MudGrid>
-                                                }
-                                            </MudItem>
-                                        }
-                                    </MudGrid>
-                                </EnterpriseCard>
-                            }
-                        </div>
-                    </EnterpriseCard>
-
-                    <EnterpriseCard Class="mb-6">
-                        <div class="ent-card-header">
-                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">5. WO Report Items</MudText>
-                            <div class="action-buttons">
-                                <MudChip T="string" Color="Color.Info">Total: @DocumentModel.WOReportItems.Count</MudChip>
-                            </div>
-                        </div>
-                        <div class="ent-p-md">
-                            <MudTable Items="DocumentModel.WOReportItems" Dense="true" Hover="true">
-                                <HeaderContent>
-                                    <MudTh>WO ID</MudTh>
-                                    <MudTh>Status</MudTh>
-                                    <MudTh>Assignee</MudTh>
-                                    <MudTh>Exec Start</MudTh>
-                                </HeaderContent>
-                                <RowTemplate>
-                                    <MudTd DataLabel="WO ID">@context.WoId</MudTd>
-                                    <MudTd DataLabel="Status">@context.Status</MudTd>
-                                    <MudTd DataLabel="Assignee">@context.Assignee</MudTd>
-                                    <MudTd DataLabel="Exec Start">@context.ExecutionStart</MudTd>
-                                </RowTemplate>
-                            </MudTable>
-
-                            <MudDivider Class="my-4" />
-                            <MudText Typo="Typo.subtitle1">Summary Table Dump Screenshot (Optional)</MudText>
-                            <div id="paste-area-summary" 
-                                 tabindex="0" 
-                                 contenteditable="true"
-                                 onkeydown="return false;"
-                                 class="ent-paste-zone pa-4 mb-2 mt-2"
-                                 @onfocus="@(async () => await InitializeSummaryClipboardAsync())">
-                                <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                    Click here and press <strong>Ctrl+V</strong> to paste the Summary Table screenshot, or upload below.
-                                </MudText>
-                            </div>
-                            
-                            <MudFileUpload T="IBrowserFile" Accept=".png, .jpg, .jpeg" OnFilesChanged="@(e => UploadSummaryScreenshotAsync(e))">
-                                <ActivatorContent>
-                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
-                                        Upload Summary Image
-                                    </MudButton>
-                                </ActivatorContent>
-                            </MudFileUpload>
-
-                            @if (DocumentModel.SummaryTableScreenshot != null)
-                            {
-                                <MudCard Elevation="2" Class="mt-3" Style="max-width: 400px;">
-                                    <MudCardMedia Image="@(DocumentModel.SummaryTableScreenshot.Base64Data ?? $"/{DocumentModel.SummaryTableScreenshot.StorageReference}")" Height="200" />
-                                    <MudCardActions Class="pa-1 d-flex justify-end">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="RemoveSummaryScreenshot" />
-                                    </MudCardActions>
-                                </MudCard>
-                            }
-
-                            <MudDivider Class="my-4" />
-                            <MudText Typo="Typo.subtitle1">Excel Screenshot (Optional - Figure 2)</MudText>
-                            <div id="paste-area-excel" 
-                                 tabindex="0" 
-                                 contenteditable="true"
-                                 onkeydown="return false;"
-                                 class="ent-paste-zone pa-4 mb-2 mt-2"
-                                 @onfocus="@(async () => await InitializeExcelClipboardAsync())">
-                                <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                    Click here and press <strong>Ctrl+V</strong> to paste the Excel screenshot, or upload below.
-                                </MudText>
-                            </div>
-                            
-                            <MudFileUpload T="IBrowserFile" Accept=".png, .jpg, .jpeg, .docx" OnFilesChanged="@(e => UploadExcelScreenshotAsync(e))">
-                                <ActivatorContent>
-                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
-                                        Upload Excel Screenshot
-                                    </MudButton>
-                                </ActivatorContent>
-                            </MudFileUpload>
-
-                            @if (DocumentModel.ExcelScreenshot != null)
-                            {
-                                <MudCard Elevation="2" Class="mt-3" Style="max-width: 400px;">
-                                    <MudCardMedia Image="@(DocumentModel.ExcelScreenshot.Base64Data ?? $"/{DocumentModel.ExcelScreenshot.StorageReference}")" Height="200" />
-                                    <MudCardActions Class="pa-1 d-flex justify-end">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="RemoveExcelScreenshot" />
-                                    </MudCardActions>
-                                </MudCard>
-                            }
-
-                            @if (DocumentModel.Application == "POS")
-                            {
-                                <MudDivider Class="my-4" />
-                                <MudText Typo="Typo.subtitle1">SIEM Access Log Attachment (POS Only)</MudText>
-                                <div id="paste-area-siem" 
-                                     tabindex="0" 
-                                     contenteditable="true"
-                                     onkeydown="return false;"
-                                     class="ent-paste-zone pa-4 mb-2 mt-2"
-                                     @onfocus="@(async () => await InitializeSiemClipboardAsync())">
-                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                        Click here and press <strong>Ctrl+V</strong> to paste the SIEM screenshot, or upload below.
-                                    </MudText>
-                                </div>
-                                
-                                <MudFileUpload T="IBrowserFile" Accept=".png, .jpg, .jpeg, .xlsb, .xlsx, .csv" OnFilesChanged="@(e => UploadSiemScreenshotAsync(e))">
-                                    <ActivatorContent>
-                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
-                                            Upload SIEM Attachment
-                                        </MudButton>
-                                    </ActivatorContent>
-                                </MudFileUpload>
-
-                                @if (DocumentModel.SiemScreenshot != null)
-                                {
-                                    <MudCard Elevation="2" Class="mt-3" Style="max-width: 400px;">
-                                        @if (!string.IsNullOrEmpty(DocumentModel.SiemScreenshot.FileName) && (DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsb", StringComparison.OrdinalIgnoreCase) || DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) || DocumentModel.SiemScreenshot.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)))
-                                        {
-                                            <MudCardContent>
-                                                <MudText Typo="Typo.body2" Color="Color.Primary"><MudIcon Icon="@Icons.Material.Filled.AttachFile" Class="mr-1" />@DocumentModel.SiemScreenshot.FileName</MudText>
-                                            </MudCardContent>
-                                        }
-                                        else
-                                        {
-                                            <MudCardMedia Image="@(DocumentModel.SiemScreenshot.Base64Data ?? $"/{DocumentModel.SiemScreenshot.StorageReference}")" Height="200" />
-                                        }
-                                        <MudCardActions Class="pa-1 d-flex justify-end">
-                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="RemoveSiemScreenshot" />
-                                        </MudCardActions>
-                                    </MudCard>
-                                }
-                            }
-                        </div>
-                    </EnterpriseCard>
-
-                    <EnterpriseCard Class="mb-6">
-                        <div class="ent-p-md">
-                            <MudGrid>
-                                <MudItem xs="12" Class="d-flex justify-end gap-2">
-                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveDraftAsync">Save Draft</MudButton>
-                                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="FinalizeDocumentAsync">Finalize</MudButton>
-                                </MudItem>
-                            </MudGrid>
-                        </div>
-                    </EnterpriseCard>
-                }
-            </MudItem>
-
-            <!-- Right Column: Live Preview -->
-            <MudItem xs="12" md="6">
-                <EnterpriseCard Class="h-100 d-flex flex-column surface-3">
-                    <div class="ent-card-header d-flex justify-space-between align-center" Style="background-color: var(--color-bg-surface-secondary);">
-                        <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">Live Preview</MudText>
-                        @if (IsDocumentLoaded)
+        <!-- Two-Column Studio Grid -->
+        <div class="prep-studio-grid">
+            <!-- Left Column: Editor Controls -->
+            <div class="prep-left-col">
+                <!-- Auto-detection Info Banner -->
+                <div class="prep-info-banner">
+                    <MudIcon Icon="@Icons.Material.Outlined.AutoFixHigh" Style="font-size: 16px; color: #4f46e5; flex-shrink: 0; margin-top: 1px;" />
+                    <div>
+                        @if (DocumentModel.WOReportItems.Any())
                         {
-                            <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportDocumentAsync">Export to DOCX</MudButton>
-                        }
-                    </div>
-                    <div class="ent-p-md flex-grow-1" style="overflow-y: auto; background-color: var(--color-bg-preview);">
-                        @if (IsDocumentLoaded)
-                        {
-                            <LivePreview DocumentModel="DocumentModel" />
+                            var activeCats = DocumentModel.ChangeCategories.Where(c => c.HasChanges).Select(c => c.CategoryName).ToList();
+                            var catSummary = activeCats.Any() ? string.Join(", ", activeCats) : "Change Categories";
+                            <span>
+                                Found <strong>@DocumentModel.WOReportItems.Count work @(DocumentModel.WOReportItems.Count == 1 ? "order" : "orders")</strong>
+                                for @(DocumentModel.Application.Equals("Techvan", StringComparison.OrdinalIgnoreCase) ? "TechVan" : DocumentModel.Application)
+                                in @GetMonthName(DocumentModel.ReportingMonth) @DocumentModel.ReportingYear.
+                                @(DocumentModel.WOReportItems.Count == 1 ? "It was" : "They were") placed under <strong>@catSummary</strong> — review below.
+                            </span>
                         }
                         else
                         {
-                            <MudText Color="Color.Secondary" Align="Align.Center">Load a document to preview.</MudText>
+                            <span>
+                                Found <strong>0 work orders</strong> for @(DocumentModel.Application.Equals("Techvan", StringComparison.OrdinalIgnoreCase) ? "TechVan" : DocumentModel.Application)
+                                in @GetMonthName(DocumentModel.ReportingMonth) @DocumentModel.ReportingYear — review categories below.
+                            </span>
                         }
                     </div>
-                </EnterpriseCard>
-            </MudItem>
-        </MudGrid>
+                </div>
+
+                <!-- 1. Change Categories Section -->
+                <div class="prep-section">
+                    <div class="prep-section-header">
+                        <span class="prep-section-title">Change categories</span>
+                        <span class="prep-section-meta">@DocumentModel.ChangeCategories.Count(c => c.HasChanges) with changes</span>
+                    </div>
+
+                    <div class="prep-categories-card">
+                        @{
+                            int catIdx = 1;
+                        }
+                        @foreach (var category in DocumentModel.ChangeCategories)
+                        {
+                            var currentCat = category;
+                            var currentIdx = catIdx++;
+                            <div class="prep-cat-item @(currentCat.HasChanges ? "expanded" : "")">
+                                <div class="prep-cat-header">
+                                    <span class="prep-cat-num">@currentIdx</span>
+                                    <input type="text"
+                                           @bind="currentCat.CategoryName"
+                                           class="prep-cat-name-input"
+                                           title="@currentCat.CategoryName" />
+                                    <label class="prep-switch">
+                                        <input type="checkbox"
+                                               checked="@currentCat.HasChanges"
+                                               @onchange="@(e => ToggleCategoryHasChanges(currentCat, (bool)(e.Value ?? false)))" />
+                                        <span class="prep-switch-slider"></span>
+                                    </label>
+                                </div>
+
+                                @if (currentCat.HasChanges)
+                                {
+                                    <div class="prep-cat-details-box">
+                                        @if (currentCat.ChangeDetails.Any())
+                                        {
+                                            <div class="prep-details-labels">
+                                                <div>WO</div>
+                                                <div>Description</div>
+                                                <div>Execution end</div>
+                                                <div></div>
+                                            </div>
+                                        }
+
+                                        @foreach (var detail in currentCat.ChangeDetails)
+                                        {
+                                            var currentDetail = detail;
+                                            <div class="prep-detail-row-wrap">
+                                                <div class="prep-detail-row">
+                                                    <input type="text"
+                                                           value="@FormatWoInput(currentDetail.ChangeOrder)"
+                                                           @onchange="@(e => UpdateChangeOrder(currentDetail, e.Value?.ToString()))"
+                                                           class="prep-input prep-input-wo"
+                                                           placeholder="WO ID" />
+
+                                                    <input type="text"
+                                                           @bind="currentDetail.Description"
+                                                           class="prep-input prep-input-desc"
+                                                           placeholder="Change description" />
+
+                                                    <input type="text"
+                                                           value="@(currentDetail.ScheduleDate?.ToString("dd-MM-yyyy hh:mm"))"
+                                                           @onchange="@(e => { var s = e.Value?.ToString(); if (DateTimeOffset.TryParse(s, out var dt)) currentDetail.ScheduleDate = dt; else currentDetail.ScheduleDate = null; })"
+                                                           class="prep-input prep-input-date"
+                                                           placeholder="dd-MM-yyyy hh:mm" />
+
+                                                    <button type="button"
+                                                            class="prep-detail-remove"
+                                                            title="Remove change"
+                                                            @onclick="@(() => RemoveChangeDetail(currentCat, currentDetail))">
+                                                        ×
+                                                    </button>
+                                                </div>
+
+                                                @if (!currentCat.CategoryName.Contains("Standard", StringComparison.OrdinalIgnoreCase) && !(currentDetail.ChangeType ?? "").Contains("Standard", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <div class="prep-deploy-evidence">
+                                                        <div id="@($"paste-area-{currentDetail.Id}")"
+                                                             tabindex="0"
+                                                             contenteditable="true"
+                                                             onkeydown="return false;"
+                                                             class="prep-mini-paste-zone"
+                                                             @onfocus="@(async () => await InitializeClipboardAsync(currentDetail.Id))">
+                                                            <span>Deployment evidence: click &amp; press <strong>Ctrl+V</strong> to paste or</span>
+                                                            <label class="prep-browse-inline" @onclick:stopPropagation="true">
+                                                                browse (.png/.jpg/.docx)
+                                                                <InputFile accept=".png, .jpg, .jpeg, .docx" multiple OnChange="@(e => UploadDeploymentScreenshotsAsync(e, currentDetail.Id))" style="display: none;" />
+                                                            </label>
+                                                        </div>
+
+                                                        @if (currentDetail.DeploymentScreenshots.Any())
+                                                        {
+                                                            <div class="prep-thumbs-row">
+                                                                @foreach (var shot in currentDetail.DeploymentScreenshots)
+                                                                {
+                                                                    <div class="prep-thumb-card">
+                                                                        <img src="@(shot.Base64Data ?? $"/{shot.StorageReference}")" alt="Deployment" class="prep-thumb-img" />
+                                                                        <input type="text" @bind="shot.Caption" placeholder="Caption" class="prep-thumb-caption" />
+                                                                        <button type="button" class="prep-thumb-del" @onclick="@(() => RemoveDeploymentScreenshot(currentDetail, shot))">×</button>
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+
+                                        <button type="button" class="prep-link-btn mt-1" @onclick="@(() => AddChangeDetail(currentCat))">
+                                            + Add change
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <button type="button" class="prep-link-btn mt-2" @onclick="AddChangeCategory">
+                        + Add category
+                    </button>
+                </div>
+
+                <!-- 2. Server Evidence Section -->
+                <div class="prep-section">
+                    <div class="prep-section-header">
+                        <span class="prep-section-title">Server evidence</span>
+                        <span class="prep-section-meta">@DocumentModel.ServerEvidences.Count @(DocumentModel.ServerEvidences.Count == 1 ? "server" : "servers")</span>
+                    </div>
+
+                    <div class="prep-server-pills">
+                        @foreach (var server in DocumentModel.ServerEvidences)
+                        {
+                            var srv = server;
+                            var isSelected = _selectedServerId == srv.Id;
+                            var label = !string.IsNullOrWhiteSpace(srv.ServerName)
+                                ? srv.ServerName
+                                : (!string.IsNullOrWhiteSpace(srv.ServerIp) ? srv.ServerIp : "new-server");
+
+                            <div class="prep-server-pill @(isSelected ? "active" : "")" @onclick="@(() => SelectServer(srv.Id))">
+                                <MudIcon Icon="@Icons.Material.Outlined.Dns" Style="font-size: 13px; color: var(--color-text-muted);" />
+                                <span class="prep-server-pill-text">@label</span>
+                                @if (srv.Screenshots.Any())
+                                {
+                                    <span class="prep-server-shot-count">@srv.Screenshots.Count</span>
+                                }
+                                <button type="button"
+                                        class="prep-server-pill-del"
+                                        title="Remove server"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="@(() => RemoveServerAndAdjustSelection(srv))">
+                                    ×
+                                </button>
+                            </div>
+                        }
+
+                        <button type="button" class="prep-server-add-pill" @onclick="AddServerAndSelect">
+                            + Add server
+                        </button>
+                    </div>
+
+                    @{
+                        var activeServer = DocumentModel.ServerEvidences.FirstOrDefault(s => s.Id == _selectedServerId);
+                    }
+                    @if (activeServer != null)
+                    {
+                        <div class="prep-server-editor-card">
+                            <div class="prep-server-inputs">
+                                <div class="prep-field">
+                                    <label>Server IP</label>
+                                    <input type="text" @bind="activeServer.ServerIp" placeholder="e.g. 172.16.8.79" class="prep-input" />
+                                </div>
+                                <div class="prep-field">
+                                    <label>Server Name / Host</label>
+                                    <input type="text" @bind="activeServer.ServerName" placeholder="e.g. dms-app-01.bl.local" class="prep-input" />
+                                </div>
+                            </div>
+
+                            <div id="@($"paste-area-{activeServer.Id}")"
+                                 tabindex="0"
+                                 contenteditable="true"
+                                 onkeydown="return false;"
+                                 class="prep-mini-paste-zone mt-2"
+                                 @onfocus="@(async () => await InitializeClipboardAsync(activeServer.Id))">
+                                <span>Click here &amp; press <strong>Ctrl+V</strong> to paste server screenshot (auto-OCR IP) or</span>
+                                <label class="prep-browse-inline" @onclick:stopPropagation="true">
+                                    browse images
+                                    <InputFile accept=".png, .jpg, .jpeg" multiple OnChange="@(e => UploadScreenshotsAsync(e, activeServer.Id))" style="display: none;" />
+                                </label>
+                            </div>
+
+                            @if (activeServer.Screenshots.Any())
+                            {
+                                <div class="prep-thumbs-row mt-2">
+                                    @foreach (var shot in activeServer.Screenshots)
+                                    {
+                                        <div class="prep-thumb-card">
+                                            <img src="@(shot.Base64Data ?? $"/{shot.StorageReference}")" alt="Server" class="prep-thumb-img" />
+                                            <input type="text" @bind="shot.Caption" placeholder="Caption" class="prep-thumb-caption" />
+                                            <button type="button" class="prep-thumb-del" @onclick="@(() => RemoveScreenshot(activeServer, shot))">×</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <!-- 3. Evidence Screenshots Section -->
+                <div class="prep-section">
+                    <div class="prep-section-header">
+                        <span class="prep-section-title">Evidence screenshots</span>
+                        <span class="prep-section-meta">Auto-attached</span>
+                    </div>
+
+                    <div class="prep-evidence-grid">
+                        <!-- Summary Table Dump · Figure 1 -->
+                        <div class="prep-evidence-box-wrap">
+                            <div id="paste-area-summary"
+                                 tabindex="0"
+                                 contenteditable="true"
+                                 onkeydown="return false;"
+                                 class="prep-evidence-dropcard"
+                                 @onfocus="@(async () => await InitializeSummaryClipboardAsync())">
+                                <MudIcon Icon="@Icons.Material.Outlined.AddPhotoAlternate" Style="font-size: 18px; color: var(--color-text-muted); margin-bottom: 6px;" />
+                                <div class="prep-evidence-title">WOs for CM review · Figure 1</div>
+                                <div class="prep-evidence-sub" @onclick:stopPropagation="true">
+                                    Paste with Ctrl+V or
+                                    <label class="prep-browse-inline">
+                                        browse
+                                        <InputFile accept=".png, .jpg, .jpeg" OnChange="@(e => UploadSummaryScreenshotAsync(e))" style="display: none;" />
+                                    </label>
+                                </div>
+                                @if (DocumentModel.SummaryTableScreenshot != null)
+                                {
+                                    <span class="prep-evidence-auto-badge">
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 11px; margin-right: 3px;" />
+                                        Auto-attached (@DocumentModel.Application highlighted)
+                                    </span>
+                                }
+                            </div>
+
+                            @if (DocumentModel.SummaryTableScreenshot != null)
+                            {
+                                <div class="prep-evidence-preview">
+                                    <img src="@(DocumentModel.SummaryTableScreenshot.Base64Data ?? $"/{DocumentModel.SummaryTableScreenshot.StorageReference}")" alt="Figure 1" />
+                                    <button type="button" class="prep-thumb-del" @onclick="RemoveSummaryScreenshot" title="Remove screenshot">×</button>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Excel Screenshot · Figure 2 -->
+                        @{
+                            bool currentAppHasChanges = DocumentModel.ChangeCategories.Any(c => c.HasChanges) || DocumentModel.WOReportItems.Any();
+                        }
+                        <div class="prep-evidence-box-wrap">
+                            <div id="paste-area-excel"
+                                 tabindex="0"
+                                 contenteditable="true"
+                                 onkeydown="return false;"
+                                 class="prep-evidence-dropcard"
+                                 @onfocus="@(async () => await InitializeExcelClipboardAsync())">
+                                <MudIcon Icon="@Icons.Material.Outlined.AddPhotoAlternate" Style="font-size: 18px; color: var(--color-text-muted); margin-bottom: 6px;" />
+                                <div class="prep-evidence-title">Filtered Excel · Figure 2</div>
+                                <div class="prep-evidence-sub" @onclick:stopPropagation="true">
+                                    Paste with Ctrl+V or
+                                    <label class="prep-browse-inline">
+                                        browse
+                                        <InputFile accept=".png, .jpg, .jpeg, .docx" OnChange="@(e => UploadExcelScreenshotAsync(e))" style="display: none;" />
+                                    </label>
+                                </div>
+                                @if (currentAppHasChanges && DocumentModel.ExcelScreenshot != null)
+                                {
+                                    <span class="prep-evidence-auto-badge">
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 11px; margin-right: 3px;" />
+                                        Auto-attached (@DocumentModel.Application marked yellow)
+                                    </span>
+                                }
+                            </div>
+
+                            @if (currentAppHasChanges)
+                            {
+                                @if (DocumentModel.ExcelScreenshot != null)
+                                {
+                                    <div class="prep-evidence-preview">
+                                        <img src="@(DocumentModel.ExcelScreenshot.Base64Data ?? $"/{DocumentModel.ExcelScreenshot.StorageReference}")" alt="Figure 2" />
+                                        <button type="button" class="prep-thumb-del" @onclick="RemoveExcelScreenshot" title="Remove screenshot">×</button>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="prep-evidence-no-change-notice">
+                                    <MudIcon Icon="@Icons.Material.Outlined.Info" Style="font-size: 13px; margin-right: 4px;" />
+                                    No change for @DocumentModel.Application · Figure 2 not required
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @if (DocumentModel.Application.Equals("POS", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div class="prep-evidence-box-wrap mt-3">
+                            <div id="paste-area-siem"
+                                 tabindex="0"
+                                 contenteditable="true"
+                                 onkeydown="return false;"
+                                 class="prep-evidence-dropcard"
+                                 style="min-height: 76px;"
+                                 @onfocus="@(async () => await InitializeSiemClipboardAsync())">
+                                <div class="prep-evidence-title">SIEM access log attachment (POS)</div>
+                                <div class="prep-evidence-sub" @onclick:stopPropagation="true">
+                                    Paste with Ctrl+V or
+                                    <label class="prep-browse-inline">
+                                        browse (.png/.xlsx/.xlsb/.csv)
+                                        <InputFile accept=".png, .jpg, .jpeg, .xlsb, .xlsx, .csv" OnChange="@(e => UploadSiemScreenshotAsync(e))" style="display: none;" />
+                                    </label>
+                                </div>
+                            </div>
+
+                            @if (DocumentModel.SiemScreenshot != null)
+                            {
+                                <div class="prep-evidence-preview">
+                                    @if (!string.IsNullOrEmpty(DocumentModel.SiemScreenshot.FileName) &&
+                                         (DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsb", StringComparison.OrdinalIgnoreCase) ||
+                                          DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                                          DocumentModel.SiemScreenshot.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        <div class="pa-2" style="font-size: 0.75rem; font-weight: 500; color: #2563eb;">
+                                            📎 @DocumentModel.SiemScreenshot.FileName
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <img src="@(DocumentModel.SiemScreenshot.Base64Data ?? $"/{DocumentModel.SiemScreenshot.StorageReference}")" alt="SIEM" />
+                                    }
+                                    <button type="button" class="prep-thumb-del" @onclick="RemoveSiemScreenshot" title="Remove SIEM attachment">×</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <!-- 4. Document Info Section -->
+                <div class="prep-section">
+                    <div class="prep-section-header">
+                        <span class="prep-section-title">Document info</span>
+                    </div>
+
+                    <div class="prep-docinfo-grid">
+                        <div class="prep-field">
+                            <label>Document version</label>
+                            <input type="text" @bind="DocumentModel.DocumentVersion" class="prep-input prep-input-mono" />
+                        </div>
+                        <div class="prep-field">
+                            <label>Template version</label>
+                            <input type="text" @bind="DocumentModel.TemplateVersion" class="prep-input prep-input-mono" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Sticky Live Preview (Document Fonts & Export Unchanged) -->
+            <div class="prep-right-col">
+                <div class="prep-preview-card">
+                    <div class="prep-preview-topbar">
+                        <div class="prep-preview-indicator">
+                            <span class="prep-preview-dot"></span>
+                            <span>Live preview</span>
+                        </div>
+
+                        <button type="button" class="dash-btn-outlined prep-export-btn" @onclick="ExportDocumentAsync">
+                            <MudIcon Icon="@Icons.Material.Outlined.Download" Size="Size.Small" Style="font-size: 14px;" />
+                            <span>Export .docx</span>
+                        </button>
+                    </div>
+
+                    <div class="prep-preview-viewport">
+                        <LivePreview DocumentModel="DocumentModel" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Action Bar -->
+        <div class="prep-bottom-bar">
+            <div class="prep-bottom-note">
+                Finalizing locks this version and notifies the approver.
+            </div>
+
+            <div class="prep-bottom-actions">
+                <button type="button" class="dash-btn-outlined" @onclick="SaveDraftAsync">
+                    Save draft
+                </button>
+                <button type="button" class="dash-btn-primary" @onclick="FinalizeDocumentAsync">
+                    Finalize document
+                </button>
+            </div>
+        </div>
     }
-    </MudContainer>
 </div>
 
+@code {
+    private Guid? _selectedServerId;
 
+    private string GetMonthName(int month)
+    {
+        if (month < 1 || month > 12) return month.ToString();
+        return System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(month);
+    }
+
+    private void ToggleCategoryHasChanges(ChangeCategoryViewModel cat, bool val)
+    {
+        cat.HasChanges = val;
+        if (val && !cat.ChangeDetails.Any())
+        {
+            cat.ChangeDetails.Add(new ChangeDetailViewModel());
+        }
+    }
+
+    private static string FormatWoInput(string? rawOrder)
+    {
+        if (string.IsNullOrWhiteSpace(rawOrder)) return string.Empty;
+        return System.Text.RegularExpressions.Regex.Replace(rawOrder, @"^WO[\s\-_]*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+    }
+
+    private static void UpdateChangeOrder(ChangeDetailViewModel detail, string? val)
+    {
+        if (string.IsNullOrWhiteSpace(val))
+        {
+            detail.ChangeOrder = string.Empty;
+            return;
+        }
+        var trimmed = val.Trim();
+        detail.ChangeOrder = trimmed.StartsWith("WO ", StringComparison.OrdinalIgnoreCase) ? trimmed : $"WO {trimmed}";
+    }
+
+    private void SelectServer(Guid serverId)
+    {
+        _selectedServerId = _selectedServerId == serverId ? null : serverId;
+    }
+
+    private void AddServerAndSelect()
+    {
+        var newServer = new ServerEvidenceViewModel();
+        DocumentModel.ServerEvidences.Add(newServer);
+        _selectedServerId = newServer.Id;
+    }
+
+    private void RemoveServerAndAdjustSelection(ServerEvidenceViewModel server)
+    {
+        RemoveServerEvidence(server);
+        if (_selectedServerId == server.Id)
+        {
+            _selectedServerId = DocumentModel.ServerEvidences.FirstOrDefault()?.Id;
+        }
+    }
+}

@@ -16,43 +16,175 @@
 <PageTitle>Monthly Report - WO CM Review</PageTitle>
 
 <!-- Toolbar for Screen Only -->
-<div class="d-flex justify-space-between align-center mb-6 print-hide">
-    <div class="d-flex align-center ent-gap-md">
-        <MudText Typo="Typo.h5" Class="ent-text-h2">Report Viewer</MudText>
-        @if (_result != null)
-        {
-            if (_isEditing)
+<div class="repview-header-wrap print-hide">
+    <button type="button" class="repview-back-link" @onclick='() => NavigationManager.NavigateTo("/reports")'>
+        <MudIcon Icon="@Icons.Material.Outlined.ArrowBack" Style="font-size: 14px;" />
+        <span>WO Count</span>
+    </button>
+
+    <div class="repview-top-bar">
+        <div class="repview-title-group">
+            <div class="d-flex align-center" style="gap: 8px; position: relative;">
+                <div class="ent-action-menu-wrap" @onclick:stopPropagation="true">
+                    <button type="button"
+                            class="repview-title-switcher"
+                            disabled="@_isEditing"
+                            @onclick="@(() => { _showSwitcherMenu = !_showSwitcherMenu; _showExportMenu = false; _showMoreMenu = false; })">
+                        <span>@(_result?.MonthYear ?? "Select report") summary</span>
+                        <MudIcon Icon="@Icons.Material.Outlined.KeyboardArrowDown" Style="font-size: 22px; color: #64748b; margin-top: 2px;" />
+                    </button>
+
+                    @if (_showSwitcherMenu && !_isEditing)
+                    {
+                        <div class="ent-action-menu-backdrop" @onclick="CloseAllMenus"></div>
+                        <div class="ent-action-menu-dropdown left" style="min-width: 280px; max-height: 320px; overflow-y: auto;">
+                            @foreach (var upload in _recentUploads)
+                            {
+                                <button type="button"
+                                        class="ent-action-menu-item"
+                                        @onclick="@(async () => { CloseAllMenus(); await OnUploadSelected(upload.Id); })">
+                                    <div class="d-flex flex-column text-left">
+                                        <span style="font-weight: 600; font-size: 0.78rem; color: var(--color-text-primary);">@upload.FileName</span>
+                                        <span style="font-size: 0.69rem; color: var(--color-text-muted);">@upload.UploadDate.ToLocalTime().ToString("MMM dd, yyyy HH:mm") · @(upload.RawWorkOrders > 0 ? upload.RawWorkOrders : upload.TotalRows) rows</span>
+                                    </div>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (_selectedUpload != null)
             {
-                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveChanges" Class="ent-btn ml-4">Save Changes</MudButton>
-                <MudButton Variant="Variant.Text" Color="Color.Default" StartIcon="@Icons.Material.Filled.Cancel" OnClick="CancelEditing" Class="ent-btn ml-2">Cancel</MudButton>
+                <div class="repview-subtitle">
+                    @_selectedUpload.FileName · @(_selectedUpload.RawWorkOrders > 0 ? _selectedUpload.RawWorkOrders : _selectedUpload.TotalRows) rows · uploaded @_selectedUpload.UploadDate.ToLocalTime().ToString("MMM dd, HH:mm")
+                </div>
             }
-            else
+        </div>
+
+        <div class="repview-actions">
+            @if (_result != null)
             {
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit" OnClick="EnableEditing" Class="ent-btn ml-4">Enable Edit Mode</MudButton>
+                @if (_isEditing)
+                {
+                    <button type="button" class="dash-btn-outline" @onclick="CancelEditing">
+                        <span>Cancel</span>
+                    </button>
+                    <button type="button" class="dash-btn-primary" style="background: #10b981; border-color: #10b981;" @onclick="SaveChanges">
+                        <MudIcon Icon="@Icons.Material.Outlined.Check" Style="font-size: 16px;" />
+                        <span>Save changes</span>
+                    </button>
+                }
+                else
+                {
+                    <button type="button" class="dash-btn-outline" @onclick="EnableEditing">
+                        <MudIcon Icon="@Icons.Material.Outlined.Edit" Style="font-size: 15px;" />
+                        <span>Edit</span>
+                    </button>
+                }
+
+                <!-- Export Menu -->
+                <div class="ent-action-menu-wrap" @onclick:stopPropagation="true">
+                    <button type="button"
+                            class="dash-btn-primary"
+                            disabled="@(_result == null || _isEditing)"
+                            @onclick="@(() => { _showExportMenu = !_showExportMenu; _showMoreMenu = false; _showSwitcherMenu = false; })">
+                        <MudIcon Icon="@Icons.Material.Outlined.FileDownload" Style="font-size: 16px;" />
+                        <span>Export</span>
+                        <MudIcon Icon="@Icons.Material.Outlined.KeyboardArrowDown" Style="font-size: 16px; margin-left: 2px;" />
+                    </button>
+
+                    @if (_showExportMenu && !_isEditing)
+                    {
+                        <div class="ent-action-menu-backdrop" @onclick="CloseAllMenus"></div>
+                        <div class="ent-action-menu-dropdown" style="min-width: 225px;">
+                            <button type="button"
+                                    class="ent-action-menu-item justify-space-between"
+                                    disabled="@_isExportingExcel"
+                                    @onclick="@(async () => { CloseAllMenus(); if (activeTabIndex == 2) await ExportFilteredExcel(); else await ExportExcel(); })">
+                                <span class="d-flex align-center" style="gap: 9px;">
+                                    <MudIcon Icon="@Icons.Material.Outlined.Description" Style="font-size: 16px; color: #64748b;" />
+                                    <span>Excel workbook</span>
+                                </span>
+                                <span class="repview-menu-hint">.xlsx</span>
+                            </button>
+
+                            <button type="button"
+                                    class="ent-action-menu-item justify-space-between"
+                                    @onclick="@(async () => { CloseAllMenus(); await PrintReport(); })">
+                                <span class="d-flex align-center" style="gap: 9px;">
+                                    <MudIcon Icon="@Icons.Material.Outlined.Print" Style="font-size: 16px; color: #64748b;" />
+                                    <span>Print or save PDF</span>
+                                </span>
+                                <span class="repview-menu-hint">⌘P</span>
+                            </button>
+
+                            <button type="button"
+                                    class="ent-action-menu-item justify-space-between"
+                                    disabled="@_isExportingImage"
+                                    @onclick="@(async () => { CloseAllMenus(); if (activeTabIndex == 2) await ExportFilteredImage(); else await ExportImage(); })">
+                                <span class="d-flex align-center" style="gap: 9px;">
+                                    <MudIcon Icon="@Icons.Material.Outlined.Image" Style="font-size: 16px; color: #64748b;" />
+                                    <span>PNG image</span>
+                                </span>
+                                <span class="repview-menu-hint">.png</span>
+                            </button>
+
+                            <div class="ent-action-menu-divider"></div>
+
+                            <button type="button"
+                                    class="ent-action-menu-item"
+                                    disabled="@_isCopyingImage"
+                                    @onclick="@(async () => { CloseAllMenus(); if (activeTabIndex == 2) await CopyFilteredImage(); else await CopyImage(); })">
+                                <MudIcon Icon="@Icons.Material.Outlined.ContentCopy" Style="font-size: 16px; color: #64748b;" />
+                                <span>Copy as image</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+
+                <!-- More Actions (...) Menu -->
+                <div class="ent-action-menu-wrap" @onclick:stopPropagation="true">
+                    <button type="button"
+                            class="repview-more-btn @(_showMoreMenu ? "active" : "")"
+                            title="More actions"
+                            disabled="@_isEditing"
+                            @onclick="@(() => { _showMoreMenu = !_showMoreMenu; _showExportMenu = false; _showSwitcherMenu = false; })">
+                        <MudIcon Icon="@Icons.Material.Outlined.MoreHoriz" Style="font-size: 18px;" />
+                    </button>
+
+                    @if (_showMoreMenu && !_isEditing)
+                    {
+                        <div class="ent-action-menu-backdrop" @onclick="CloseAllMenus"></div>
+                        <div class="ent-action-menu-dropdown" style="min-width: 195px;">
+                            <button type="button"
+                                    class="ent-action-menu-item"
+                                    @onclick="@(() => { _showTotalRow = !_showTotalRow; CloseAllMenus(); })">
+                                <MudIcon Icon="@(_showTotalRow ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)" Style="font-size: 16px; color: #64748b;" />
+                                <span>@(_showTotalRow ? "Hide total row" : "Show total row")</span>
+                            </button>
+
+                            <button type="button"
+                                    class="ent-action-menu-item"
+                                    @onclick="@(async () => { CloseAllMenus(); await ResetToAutoGenerated(); })">
+                                <MudIcon Icon="@Icons.Material.Outlined.Restore" Style="font-size: 16px; color: #64748b;" />
+                                <span>Reset to default</span>
+                            </button>
+
+                            <div class="ent-action-menu-divider"></div>
+
+                            <button type="button"
+                                    class="ent-action-menu-item danger"
+                                    disabled="@(_selectedUploadId == null || _isLoading)"
+                                    @onclick="@(async () => { CloseAllMenus(); await DeleteUpload(); })">
+                                <MudIcon Icon="@Icons.Material.Outlined.DeleteOutline" Style="font-size: 16px;" />
+                                <span>Delete report</span>
+                            </button>
+                        </div>
+                    }
+                </div>
             }
-        }
-    </div>
-    <div class="d-flex ent-gap-md">
-        <MudSelect T="Guid?" Value="@_selectedUploadId" ValueChanged="OnUploadSelected" Variant="Variant.Outlined" Margin="Margin.Dense" Class="ent-input" Style="width: 250px; background-color: var(--color-bg-surface);" Underline="false" Disabled="@_isEditing">
-            <MudSelectItem T="Guid?" Value="null">-- Select Month --</MudSelectItem>
-            @foreach (var upload in _recentUploads)
-            {
-                <MudSelectItem T="Guid?" Value="@upload.Id">@upload.UploadDate.ToString("MMM dd") - @upload.FileName (@upload.TotalRows rows)</MudSelectItem>
-            }
-        </MudSelect>
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" Class="ent-btn print-hide" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteUpload" Disabled="@(_selectedUploadId == null || _isLoading || _isEditing)">Delete</MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="ent-btn" StartIcon="@Icons.Material.Filled.Print" OnClick="PrintReport" Disabled="@(_result == null || _isEditing)">Print PDF</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportExcel" Disabled="@(_result == null || _isExportingExcel || _isEditing)">Export Excel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Image" OnClick="ExportImage" Disabled="@(_result == null || _isExportingImage || _isEditing)">Export Image</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Info" Class="ent-btn" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="CopyImage" Disabled="@(_result == null || _isCopyingImage || _isEditing)">Copy Image</MudButton>
-        @if (_result != null && !_isEditing)
-        {
-            <MudButton Variant="Variant.Outlined" Color="Color.Warning" Class="ent-btn" StartIcon="@Icons.Material.Filled.Restore" OnClick="ResetToAutoGenerated">Reset Default</MudButton>
-        }
-        @if (_result != null)
-        {
-            <MudSwitch T="bool" @bind-Value="_showTotalRow" Color="Color.Primary" Label="Total Row" Class="print-hide ml-2" />
-        }
+        </div>
     </div>
 </div>
 
@@ -69,10 +201,40 @@ else if (_result == null)
 }
 else
 {
-    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4" @bind-ActivePanelIndex="activeTabIndex">
-        <MudTabPanel Text="Monthly Summary">
-            <div id="report-container" class="ent-print-a4 ent-card" style="background-color: #F8FAFC; padding: 20px; margin-top: 20px;">
-                <div id="monthly-summary-export-wrapper" class="mb-8" style="padding: 2px; background-color: white;">
+    <!-- Custom Tab Strip matching design -->
+    <div class="repview-tabs-bar print-hide">
+        <button type="button" class="repview-tab @(activeTabIndex == 0 ? "active" : "")" @onclick="() => activeTabIndex = 0">
+            Monthly summary
+        </button>
+        <button type="button" class="repview-tab @(activeTabIndex == 1 ? "active" : "")" @onclick="() => activeTabIndex = 1">
+            WOs for CM review
+        </button>
+        <button type="button" class="repview-tab @(activeTabIndex == 2 ? "active" : "")" @onclick="() => activeTabIndex = 2">
+            Filtered Excel
+        </button>
+    </div>
+
+    @if (activeTabIndex == 0 || activeTabIndex == 1)
+    {
+        <!-- Note & Show Total Row Switch Bar -->
+        <div class="repview-sheet-meta print-hide">
+            <span class="repview-sheet-note">This is the sheet exactly as it exports.</span>
+            <label class="repview-switch-wrap">
+                <span class="prep-switch">
+                    <input type="checkbox" @bind="_showTotalRow" />
+                    <span class="prep-switch-slider"></span>
+                </span>
+                <span class="repview-switch-label">Show total row</span>
+            </label>
+        </div>
+    }
+
+    <!-- Sheet Card Container (Existing Table Colors, Fonts, and Exports Preserved) -->
+    <div class="repview-sheet-card">
+        @if (activeTabIndex == 0)
+        {
+            <div id="report-container" class="ent-print-a4" style="padding: 20px;">
+                <div id="monthly-summary-export-wrapper" class="mb-6" style="padding: 2px; background-color: white;">
                     <table id="monthly-summary-table" class="w-100" style="border-collapse: collapse; text-align: center; border: 2px solid black; font-family: Calibri, sans-serif;">
                     <thead>
                         <tr>
@@ -201,46 +363,48 @@ else
                     <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="AddRow" Class="mt-2">Add Row</MudButton>
                 }
 
-                <!-- Signatures -->
-                <div class="d-flex justify-space-between mt-16 pt-8 print-hide-editing">
-                    <div style="width: 250px; border-top: 1px solid var(--color-border); text-align: center; padding-top: 8px;">
-                        <MudText Typo="Typo.caption" Class="ent-text-caption">REVIEWER SIGNATURE</MudText>
+                <!-- Signatures matching attached design -->
+                <div class="repview-signatures print-hide-editing">
+                    <div class="repview-sig-col">
+                        <div class="repview-sig-line"></div>
+                        <span class="repview-sig-label">Reviewer signature</span>
                     </div>
-                    <div style="width: 250px; border-top: 1px solid var(--color-border); text-align: center; padding-top: 8px;">
-                        <MudText Typo="Typo.caption" Class="ent-text-caption">DATE</MudText>
+                    <div class="repview-sig-col right">
+                        <div class="repview-sig-line"></div>
+                        <span class="repview-sig-label">Date</span>
                     </div>
                 </div>
             </div>
-        </MudTabPanel>
-        
-        <MudTabPanel Text="WO for CM review Document">
-            <div id="cm-report-container" class="ent-print-a4 ent-card" style="background-color: #F8FAFC; padding: 20px; margin-top: 20px;">
-                <div id="cm-review-export-wrapper" class="mb-8" style="padding: 2px; background-color: white;">
-                    <table id="cm-review-table" class="w-100" style="border-collapse: collapse; text-align: center; border: 2px solid black; font-family: Calibri, sans-serif; font-size: 1.1rem;">
+        }
+        else if (activeTabIndex == 1)
+        {
+            <div id="cm-report-container" class="ent-print-a4" style="padding: 20px;">
+                <div id="cm-review-export-wrapper" class="mb-6" style="padding: 2px; background-color: white;">
+                    <table id="cm-review-table" class="w-100" style="border-collapse: collapse; text-align: center; border: 2px solid black; font-family: Calibri, sans-serif;">
                     <thead>
                         <tr>
-                            <th colspan="6" style="background-color: #F4B084; padding: 10px; font-weight: bold; border: 1px solid black; color: black; font-size: 1.25rem;">
+                            <th colspan="6" style="background-color: #F4B084; padding: 6px; font-weight: bold; border: 1px solid black; color: black; font-size: 1.1rem;">
                                 Change Management Summary @_result.MonthYear
                             </th>
                         </tr>
                         <tr>
-                            <th style="background-color: #FFE699; padding: 10px; font-weight: bold; border: 1px solid black; text-align: left; color: black; width: 15%;">
+                            <th style="background-color: #FFE699; padding: 6px; font-weight: bold; border: 1px solid black; text-align: left; color: black; width: 15%;">
                                 Total Change :
                             </th>
-                            <th colspan="5" style="background-color: #FFE699; padding: 10px; font-weight: bold; border: 1px solid black; text-align: left; color: black;">
+                            <th colspan="5" style="background-color: #FFE699; padding: 6px; font-weight: bold; border: 1px solid black; text-align: left; color: black;">
                                 @_result.TotalRawWorkOrders
                             </th>
                         </tr>
                         <tr style="background-color: #8EA9DB; color: black;">
-                            <th style="border: 1px solid black; padding: 10px; font-weight: bold; width: 15%;">Division</th>
-                            <th style="border: 1px solid black; padding: 10px; font-weight: bold; width: 25%;">Functional Unit</th>
-                            <th style="border: 1px solid black; padding: 10px; font-weight: bold; width: 25%;">Team Leader/POC</th>
-                            <th style="border: 1px solid black; padding: 10px; font-weight: bold; width: 15%;">Implemented Change</th>
-                            <th style="border: 1px solid black; padding: 10px; font-weight: bold; width: 15%;">Implemented Change with<br/>backdated CM</th>
-                            <th style="border: 1px solid black; padding: 10px; font-weight: bold; width: 5%;">Total</th>
+                            <th style="border: 1px solid black; padding: 6px; font-weight: bold; width: 15%;">Division</th>
+                            <th style="border: 1px solid black; padding: 6px; font-weight: bold; width: 25%;">Functional Unit</th>
+                            <th style="border: 1px solid black; padding: 6px; font-weight: bold; width: 25%;">Team Leader/POC</th>
+                            <th style="border: 1px solid black; padding: 6px; font-weight: bold; width: 15%;">Implemented Change</th>
+                            <th style="border: 1px solid black; padding: 6px; font-weight: bold; width: 15%;">Implemented Change with<br/>backdated CM</th>
+                            <th style="border: 1px solid black; padding: 6px; font-weight: bold; width: 5%;">Total</th>
                             @if (_isEditing)
                             {
-                                <th style="padding: 10px; font-weight: bold; width: 8%;" class="print-hide">Actions</th>
+                                <th style="padding: 6px; font-weight: bold; width: 8%;" class="print-hide">Actions</th>
                             }
                         </tr>
                     </thead>
@@ -254,18 +418,18 @@ else
                             <tr @key="item.GetHashCode()">
                                 @if (isFirstCm)
                                 {
-                                    <td rowspan="@itemCountCm" style="border: 1px solid black; border-left: 2px solid black; padding: 10px; vertical-align: middle; background-color: white; color: black; text-align: center;">
+                                    <td rowspan="@itemCountCm" style="border: 1px solid black; border-left: 2px solid black; padding: 6px; vertical-align: middle; background-color: white; color: black; text-align: center;">
                                         <div style="display: inline-block;">
                                             Business Support<br/>Service and Operations<br/>Support Service
                                         </div>
                                     </td>
                                     isFirstCm = false;
                                 }
-                                <td style="border: 1px solid black; padding: 10px; text-align: left; background-color: @(item.RowColor ?? "white"); color: black;">@item.FunctionalUnit</td>
-                                <td style="border: 1px solid black; padding: 10px; background-color: @(item.RowColor ?? "white"); color: black;">@item.TeamLeader</td>
-                                <td style="border: 1px solid black; padding: 10px; background-color: @(item.RowColor ?? "white"); color: black;">@item.ActualCount</td>
-                                <td style="border: 1px solid black; padding: 10px; background-color: @(item.RowColor ?? "white"); color: black;"></td>
-                                <td style="border: 1px solid black; padding: 10px; background-color: @(item.RowColor ?? "white"); color: black;">@item.ActualCount</td>
+                                <td style="border: 1px solid black; padding: 6px; text-align: left; background-color: @(item.RowColor ?? "white"); color: black;">@item.FunctionalUnit</td>
+                                <td style="border: 1px solid black; padding: 6px; background-color: @(item.RowColor ?? "white"); color: black;">@item.TeamLeader</td>
+                                <td style="border: 1px solid black; padding: 6px; background-color: @(item.RowColor ?? "white"); color: black;">@item.ActualCount</td>
+                                <td style="border: 1px solid black; padding: 6px; background-color: @(item.RowColor ?? "white"); color: black;"></td>
+                                <td style="border: 1px solid black; padding: 6px; background-color: @(item.RowColor ?? "white"); color: black;">@item.ActualCount</td>
                                 @if (_isEditing)
                                 {
                                     <td style="border: none; text-align: center; white-space: nowrap; background-color: @(item.RowColor ?? "white");" class="print-hide">
@@ -290,22 +454,25 @@ else
                     </tbody>
                 </table>
                 </div>
-            </div>
-        </MudTabPanel>
-        
-        <MudTabPanel Text="Filtered Excel">
-            <div id="filtered-excel-container" class="ent-card" style="@((_isExportingImage || _isCopyingImage) ? "width: fit-content;" : "") background-color: #F8FAFC; padding: 20px; margin-top: 20px;">
-                <div class="d-flex justify-space-between align-center mb-4 print-hide">
-                    <MudText Typo="Typo.h6">Filtered Work Orders</MudText>
-                    <div>
-                        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportFilteredExcel" Class="mr-2" Disabled="@_isExportingExcel">Export Excel</MudButton>
-                        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Image" OnClick="ExportFilteredImage" Class="mr-2" Disabled="@_isExportingImage">Export Image</MudButton>
-                        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="CopyFilteredImage" Disabled="@_isCopyingImage">Copy Image</MudButton>
+
+                <!-- Signatures matching Monthly summary -->
+                <div class="repview-signatures print-hide-editing">
+                    <div class="repview-sig-col">
+                        <div class="repview-sig-line"></div>
+                        <span class="repview-sig-label">Reviewer signature</span>
+                    </div>
+                    <div class="repview-sig-col right">
+                        <div class="repview-sig-line"></div>
+                        <span class="repview-sig-label">Date</span>
                     </div>
                 </div>
-                
+            </div>
+        }
+        else if (activeTabIndex == 2)
+        {
+            <div id="filtered-excel-container" style="@((_isExportingImage || _isCopyingImage) ? "width: fit-content;" : "") padding: 20px;">
                 <div id="filtered-table-only" style="@((_isExportingImage || _isCopyingImage) ? "overflow: visible; width: fit-content;" : "overflow-x: auto;") background-color: white; border: 1px solid #d4d4d4;">
-                    <table class="w-100 mb-8" style="border-collapse: collapse; text-align: left; font-family: Calibri, sans-serif; white-space: nowrap; font-size: 11pt;">
+                    <table class="w-100 mb-0" style="border-collapse: collapse; text-align: left; font-family: Calibri, sans-serif; white-space: nowrap; font-size: 11pt;">
                         <thead>
                             <tr style="background-color: white; color: black; border-bottom: 2px solid #d4d4d4;">
                                 <th style="border-right: 1px solid #d4d4d4; padding: 4px 6px; font-weight: bold;">WO</th>
@@ -393,8 +560,8 @@ else
                     </table>
                 </div>
             </div>
-        </MudTabPanel>
-    </MudTabs>
+        }
+    </div>
 }
 
 @code {
@@ -412,7 +579,17 @@ else
     private bool _isCopyingImage;
     private bool _isEditing;
     private bool _showTotalRow = true;
+    private bool _showSwitcherMenu;
+    private bool _showExportMenu;
+    private bool _showMoreMenu;
     private int activeTabIndex = 0;
+
+    private void CloseAllMenus()
+    {
+        _showSwitcherMenu = false;
+        _showExportMenu = false;
+        _showMoreMenu = false;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -694,8 +871,6 @@ else
         try
         {
             _isExportingImage = true;
-            StateHasChanged();
-            await Task.Delay(100); // Wait for DOM to update with expanded width
             string containerId = activeTabIndex == 0 ? "monthly-summary-export-wrapper" : (activeTabIndex == 1 ? "cm-review-export-wrapper" : "filtered-table-only");
             string fileName = activeTabIndex == 0 ? $"Change_Management_Summary_{_result.MonthYear}.png" : (activeTabIndex == 1 ? $"Change_Management_Review_Summary_{_result.MonthYear}.png" : $"Filtered_Excel_{_result.MonthYear}.png");
             
@@ -718,16 +893,13 @@ else
         try
         {
             _isCopyingImage = true;
-            StateHasChanged();
-            await Task.Delay(100); // Wait for DOM to update with expanded width
-            
             string containerId = activeTabIndex == 0 ? "monthly-summary-export-wrapper" : (activeTabIndex == 1 ? "cm-review-export-wrapper" : "filtered-table-only");
             var result = await JSRuntime.InvokeAsync<bool>("copyDivToClipboardImage", containerId);
             
             if (result)
                 Snackbar.Add("Image copied to clipboard!", Severity.Success);
             else
-                Snackbar.Add("Failed to copy image. Your browser might not support clipboard API or requires HTTPS.", Severity.Warning);
+                Snackbar.Add("Failed to copy image.", Severity.Warning);
         }
         catch (Exception ex)
         {
@@ -826,8 +998,6 @@ else
         try
         {
             _isExportingImage = true;
-            StateHasChanged();
-            await Task.Delay(100);
             string fileName = $"Filtered_Excel_{_result.MonthYear}.png";
             await JSRuntime.InvokeVoidAsync("exportDivToImage", "filtered-table-only", fileName);
         }
@@ -847,8 +1017,6 @@ else
         try
         {
             _isCopyingImage = true;
-            StateHasChanged();
-            await Task.Delay(100);
             var result = await JSRuntime.InvokeAsync<bool>("copyDivToClipboardImage", "filtered-table-only");
             if (result)
                 Snackbar.Add("Image copied to clipboard!", Severity.Success);

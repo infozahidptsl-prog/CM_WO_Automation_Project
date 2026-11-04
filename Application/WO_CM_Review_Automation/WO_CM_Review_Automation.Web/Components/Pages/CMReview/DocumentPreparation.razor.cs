@@ -17,6 +17,9 @@ using WO_CM_Review_Automation.Application.ViewModels.CMReview;
 using WO_CM_Review_Automation.Domain.Entities.CMReview;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using Microsoft.EntityFrameworkCore;
+using WO_CM_Review_Automation.Application.Reports;
+using WO_CM_Review_Automation.Infrastructure.Data;
 
 namespace WO_CM_Review_Automation.Web.Components.Pages.CMReview;
 
@@ -29,6 +32,8 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
     [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
     [Inject] private IWebHostEnvironment WebHostEnvironment { get; set; } = default!;
     [Inject] private ICMReviewWordGenerator WordGenerator { get; set; } = default!;
+    [Inject] private IServiceScopeFactory ServiceScopeFactory { get; set; } = default!;
+    [Inject] private ICMReviewEvidenceImageGenerator EvidenceImageGenerator { get; set; } = default!;
 
     private DotNetObjectReference<DocumentPreparation>? _dotNetRef;
     private bool _pendingClipboardInit = false; // deferred to OnAfterRenderAsync
@@ -45,38 +50,81 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
     [Parameter]
     public Guid? DocumentId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "app")]
+    public string? QueryApp { get; set; }
+
+    [SupplyParameterFromQuery(Name = "month")]
+    public int? QueryMonth { get; set; }
+
+    [SupplyParameterFromQuery(Name = "year")]
+    public int? QueryYear { get; set; }
+
+    private readonly System.Threading.SemaphoreSlim _loadLock = new(1, 1);
+
     protected override async Task OnParametersSetAsync()
     {
-        if (DocumentId.HasValue && !IsDocumentLoaded)
+        if (IsDocumentLoaded) return;
+
+        await _loadLock.WaitAsync();
+        try
         {
-            var dbDoc = await DocumentService.GetDocumentAsync(DocumentId.Value);
-            if (dbDoc != null)
+            if (IsDocumentLoaded) return;
+
+            if (!ActiveApplications.Any())
             {
-                DocumentModel.Application = dbDoc.Application;
-                DocumentModel.ReportingYear = dbDoc.ReportingYear;
-                DocumentModel.ReportingMonth = dbDoc.ReportingMonth;
-                await LoadDocumentDataAsync();
+                var mappings = await MappingService.GetApplicationMappingsAsync();
+                ActiveApplications = mappings
+                    .Where(m => m.IsActive)
+                    .OrderBy(m => m.DisplayOrder)
+                    .Select(m => m.NormalizedName)
+                    .Distinct()
+                    .ToList();
+
+                if (!ActiveApplications.Any())
+                {
+                    ActiveApplications = new List<string> { "POS", "DMS", "Sales Force App", "AMS", "Techvan", "LEA" };
+                }
             }
+
+            if (DocumentId.HasValue)
+            {
+                var dbDoc = await DocumentService.GetDocumentAsync(DocumentId.Value);
+                if (dbDoc != null)
+                {
+                    DocumentModel.Application = dbDoc.Application;
+                    DocumentModel.ReportingYear = dbDoc.ReportingYear;
+                    DocumentModel.ReportingMonth = dbDoc.ReportingMonth;
+                    await LoadDocumentDataInternalAsync();
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(QueryApp))
+            {
+                DocumentModel.Application = QueryApp;
+                if (QueryMonth.HasValue && QueryMonth.Value >= 1 && QueryMonth.Value <= 12)
+                    DocumentModel.ReportingMonth = QueryMonth.Value;
+                if (QueryYear.HasValue && QueryYear.Value >= 2000)
+                    DocumentModel.ReportingYear = QueryYear.Value;
+                await LoadDocumentDataInternalAsync();
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(DocumentModel.Application))
+                {
+                    DocumentModel.Application = ActiveApplications.FirstOrDefault() ?? "POS";
+                }
+                await LoadDocumentDataInternalAsync();
+            }
+        }
+        finally
+        {
+            _loadLock.Release();
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
         _dotNetRef = DotNetObjectReference.Create(this);
-        
-        var mappings = await MappingService.GetApplicationMappingsAsync();
-        ActiveApplications = mappings
-            .Where(m => m.IsActive)
-            .OrderBy(m => m.DisplayOrder)
-            .Select(m => m.NormalizedName)
-            .Distinct()
-            .ToList();
-
-        if (!ActiveApplications.Any())
-        {
-            // Fallback if no mappings exist
-            ActiveApplications = new List<string> { "POS", "DMS", "Sales Force App", "AMS", "Techvan", "LEA" };
-        }
+        return Task.CompletedTask;
     }
 
     public void Dispose()
@@ -110,6 +158,21 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
     }
 
     private async Task LoadDocumentDataAsync()
+    {
+        if (IsLoading) return;
+
+        await _loadLock.WaitAsync();
+        try
+        {
+            await LoadDocumentDataInternalAsync();
+        }
+        finally
+        {
+            _loadLock.Release();
+        }
+    }
+
+    private async Task LoadDocumentDataInternalAsync()
     {
         if (IsLoading) return;
 
@@ -285,6 +348,11 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
                         cat.HasChanges = false;
                 }
             }
+
+            // Auto-generate Evidence Screenshots:
+            // 1. "WOs for CM review" table (Figure 1) with current application highlighted yellow (for ALL applications)
+            // 2. "Filtered Excel" table (Figure 2) with current application's WOs highlighted yellow (ONLY if application has changes)
+            await AutoGenerateEvidenceScreenshotsAsync();
 
             IsDocumentLoaded = true;
             Snackbar.Add("Data loaded successfully", Severity.Success);
@@ -1478,6 +1546,128 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
     private void RemoveSummaryScreenshot()
     {
         DocumentModel.SummaryTableScreenshot = null;
+    }
+
+    private async Task AutoGenerateEvidenceScreenshotsAsync()
+    {
+        try
+        {
+            using var scope = ServiceScopeFactory.CreateScope();
+            var reportService = scope.ServiceProvider.GetRequiredService<IChangeManagementReportService>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            // 1. Identify upload for DocumentModel.ReportingYear and DocumentModel.ReportingMonth
+            Guid? targetUploadId = null;
+
+            // Strategy A: Find upload associated with work orders of that month/year
+            var allWos = await dbContext.WorkOrders
+                .Select(w => new { w.UploadHistoryId, w.ApprovalDate })
+                .ToListAsync();
+
+            var matchingUploadIds = allWos
+                .Where(w => !string.IsNullOrWhiteSpace(w.ApprovalDate) &&
+                            DateTime.TryParse(w.ApprovalDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt) &&
+                            dt.Year == DocumentModel.ReportingYear && dt.Month == DocumentModel.ReportingMonth)
+                .GroupBy(w => w.UploadHistoryId)
+                .OrderByDescending(g => g.Count())
+                .Select(g => g.Key)
+                .ToList();
+
+            if (matchingUploadIds.Any())
+            {
+                targetUploadId = matchingUploadIds.First();
+            }
+
+            // Strategy B: If none, look at UploadHistories by filename or date
+            if (!targetUploadId.HasValue)
+            {
+                var monthName = System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(DocumentModel.ReportingMonth);
+                var shortMonth = monthName.Length > 3 ? monthName.Substring(0, 3) : monthName;
+
+                var uploads = await dbContext.UploadHistories
+                    .OrderByDescending(u => u.UploadDate)
+                    .ToListAsync();
+
+                var matchedUpload = uploads.FirstOrDefault(u =>
+                    (u.FileName.Contains(monthName, StringComparison.OrdinalIgnoreCase) ||
+                     u.FileName.Contains(shortMonth, StringComparison.OrdinalIgnoreCase)) &&
+                    u.FileName.Contains(DocumentModel.ReportingYear.ToString()));
+
+                if (matchedUpload == null)
+                {
+                    matchedUpload = uploads.FirstOrDefault(u =>
+                        u.UploadDate.Year == DocumentModel.ReportingYear &&
+                        u.UploadDate.Month == DocumentModel.ReportingMonth);
+                }
+
+                if (matchedUpload != null)
+                {
+                    targetUploadId = matchedUpload.Id;
+                }
+            }
+
+            ChangeManagementReportResult? cmReport = null;
+            if (targetUploadId.HasValue)
+            {
+                try
+                {
+                    cmReport = await reportService.GenerateReportAsync(targetUploadId.Value);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AutoEvidence] GenerateReportAsync error: {ex.Message}");
+                }
+            }
+
+            string displayMonthYear = cmReport != null && !string.IsNullOrWhiteSpace(cmReport.MonthYear)
+                ? cmReport.MonthYear
+                : $"{System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(DocumentModel.ReportingMonth)} {DocumentModel.ReportingYear}";
+
+            int rawWos = cmReport?.TotalRawWorkOrders ?? 0;
+            var reportItems = cmReport?.Items ?? new List<ChangeManagementReportItem>();
+
+            // Auto-generate Figure 1 ("WOs for CM review") for ALL applications
+            var fig1Bytes = EvidenceImageGenerator.GenerateSummaryTableImage(
+                displayMonthYear,
+                rawWos,
+                reportItems,
+                DocumentModel.Application);
+
+            DocumentModel.SummaryTableScreenshot = new ScreenshotViewModel
+            {
+                Id = Guid.NewGuid(),
+                Base64Data = "data:image/png;base64," + Convert.ToBase64String(fig1Bytes),
+                ContentType = "image/png",
+                FileName = $"Summary_{DocumentModel.Application}_{DocumentModel.ReportingMonth}_{DocumentModel.ReportingYear}.png"
+            };
+
+            // Auto-generate Figure 2 ("Filtered Excel"):
+            // "If the application has change, then next excel screenshot will appear with yellow marks."
+            // "If the application has No change, then no excel screenshot."
+            bool hasAnyChanges = DocumentModel.ChangeCategories.Any(c => c.HasChanges) || DocumentModel.WOReportItems.Any();
+
+            if (hasAnyChanges && cmReport?.FilteredWorkOrders != null && cmReport.FilteredWorkOrders.Any())
+            {
+                var appWoIds = new HashSet<string>(DocumentModel.WOReportItems.Select(w => w.WoId), StringComparer.OrdinalIgnoreCase);
+                var fig2Bytes = EvidenceImageGenerator.GenerateFilteredExcelImage(cmReport.FilteredWorkOrders, appWoIds);
+
+                DocumentModel.ExcelScreenshot = new ScreenshotViewModel
+                {
+                    Id = Guid.NewGuid(),
+                    Base64Data = "data:image/png;base64," + Convert.ToBase64String(fig2Bytes),
+                    ContentType = "image/png",
+                    FileName = $"Excel_{DocumentModel.Application}_{DocumentModel.ReportingMonth}_{DocumentModel.ReportingYear}.png"
+                };
+            }
+            else
+            {
+                DocumentModel.ExcelScreenshot = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AutoEvidence] Failed to auto-generate evidence screenshots: {ex.Message}");
+        }
     }
 
     private async Task UploadExcelScreenshotAsync(InputFileChangeEventArgs e)

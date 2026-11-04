@@ -1,83 +1,424 @@
 @page "/reports"
+@using WO_CM_Review_Automation.Application.Processing
+@using WO_CM_Review_Automation.Application.Reports
 @using WO_CM_Review_Automation.Domain.Entities
 @using WO_CM_Review_Automation.Infrastructure.Data
 @using Microsoft.EntityFrameworkCore
-@using WO_CM_Review_Automation.Web.Components.Shared
+@using System.Text.RegularExpressions
 @inject ApplicationDbContext DbContext
+@inject IProcessingEngine ProcessingEngine
+@inject IChangeManagementReportService ReportService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 
-<PageTitle>Monthly Reports - WO CM Review</PageTitle>
-
-<EnterprisePageHeader Title="Monthly Reports" Subtitle="View all uploaded monthly reports" />
+<PageTitle>WO Count - WO CM Review</PageTitle>
 
 @if (_isLoading)
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
 }
-else if (!_uploads.Any())
+else if (!_rows.Any())
 {
     <EnterpriseEmptyState 
         Icon="@Icons.Material.Filled.Assessment" 
         Title="No Reports Found" 
-        Description="There are currently no uploaded reports available to display." />
+        Description="There are currently no uploaded reports available to display."
+        PrimaryAction="@(() => NavigationManager.NavigateTo("/upload"))"
+        PrimaryActionText="Upload data" />
 }
 else
 {
-    <EnterpriseCard Class="ent-p-md mb-4 d-flex align-center">
-        <MudIcon Icon="@Icons.Material.Filled.Search" Color="Color.Default" Class="mr-3" />
-        <MudTextField @bind-Value="_searchString" Placeholder="Search reports by file name..." Variant="Variant.Text" Underline="false" Class="mt-0" Clearable="true"></MudTextField>
-    </EnterpriseCard>
+    <div class="mreports-wrapper">
+        <!-- Page Header -->
+        <div class="mreports-header-row">
+            <div>
+                <h1 class="mreports-title">WO Count</h1>
+                <div class="mreports-subtitle">Every uploaded export and the summary generated from it.</div>
+            </div>
 
-    <MudTable Items="@_uploads" Hover="true" Breakpoint="Breakpoint.Sm" Class="ent-table" Filter="new Func<UploadHistory,bool>(FilterFunc1)">
-        <HeaderContent>
-            <MudTh><MudTableSortLabel SortBy="new Func<UploadHistory, object>(x=>x.UploadDate)">Upload Date</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<UploadHistory, object>(x=>x.FileName)">File Name</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<UploadHistory, object>(x=>x.TotalRows)">Total Rows</MudTableSortLabel></MudTh>
-            <MudTh Style="text-align:right">Action</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="Upload Date">
-                <MudText Typo="Typo.body2">@context.UploadDate.ToString("MMM dd, yyyy")</MudText>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.UploadDate.ToString("hh:mm tt")</MudText>
-            </MudTd>
-            <MudTd DataLabel="File Name">
-                <div class="d-flex align-center">
-                    <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small" Class="mr-3">
-                        <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" />
-                    </MudAvatar>
-                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.FileName</MudText>
+            <div>
+                <button type="button" class="dash-btn-primary" @onclick="@(() => NavigationManager.NavigateTo("/upload"))">
+                    <MudIcon Icon="@Icons.Material.Outlined.CloudUpload" Size="Size.Small" Style="font-size: 16px;" />
+                    <span>Upload data</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Search & Duplicate Filter Toolbar -->
+        <div class="mreports-toolbar">
+            <div class="wolist-search-box" style="width: 260px;">
+                <MudIcon Icon="@Icons.Material.Outlined.Search" Size="Size.Small" Class="wolist-search-icon" />
+                <input type="text"
+                       placeholder="Search by file name"
+                       value="@_searchString"
+                       @oninput="OnSearchChanged"
+                       class="wolist-search-input" />
+            </div>
+
+            @if (_duplicateTotalCount > 0)
+            {
+                <div class="mreports-dup-notice">
+                    <MudIcon Icon="@Icons.Material.Outlined.FileCopy" Style="font-size: 14px; color: #d97706;" />
+                    <span>@_duplicateTotalCount uploads repeat the same file.</span>
+                    <button type="button" class="mreports-dup-toggle" @onclick="ToggleHideDuplicates">
+                        @(_hideDuplicates ? "Show duplicates" : "Hide duplicates")
+                    </button>
                 </div>
-            </MudTd>
-            <MudTd DataLabel="Total Rows">
-                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">@context.TotalRows.ToString("N0") rows</MudChip>
-            </MudTd>
-            <MudTd DataLabel="Action" Style="text-align:right">
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Visibility" OnClick="@(() => ViewReport(context.Id))">View Report</MudButton>
-            </MudTd>
-        </RowTemplate>
-        <PagerContent>
-            <MudTablePager />
-        </PagerContent>
-    </MudTable>
+            }
+        </div>
+
+        <!-- Reports Table Card -->
+        <div class="mreports-table-card">
+            <div class="mreports-thead">
+                <div class="mreports-col-period">Period</div>
+                <div class="mreports-col-file">File</div>
+                <div class="mreports-col-uploaded">Uploaded</div>
+                <div class="mreports-col-rows">Rows</div>
+                <div class="mreports-col-changes">Changes</div>
+                <div class="mreports-col-actions"></div>
+            </div>
+
+            <div class="mreports-tbody">
+                @if (!PagedRows.Any())
+                {
+                    <div class="wolist-empty-row">
+                        No reports match your search filter.
+                    </div>
+                }
+                else
+                {
+                    @foreach (var row in PagedRows)
+                    {
+                        <div class="mreports-row @(row.IsDuplicate ? "is-duplicate" : "")">
+                            <div class="mreports-col-period" @onclick="@(() => ViewReport(row.Id))" style="cursor: pointer; font-weight: 500;">@row.PeriodLabel</div>
+
+                            <div class="mreports-col-file" @onclick="@(() => ViewReport(row.Id))" style="cursor: pointer;">
+                                <div class="mreports-file-icon @(row.IsCsv ? "csv" : "xlsx")">
+                                    <MudIcon Icon="@Icons.Material.Outlined.Description" Style="font-size: 15px;" />
+                                </div>
+                                <div class="mreports-file-info">
+                                    <div class="mreports-file-name" title="@row.FileName">@row.FileName</div>
+                                    @if (row.IsDuplicate)
+                                    {
+                                        <div class="mreports-dup-tag">Duplicate of the upload above</div>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="mreports-col-uploaded">@row.UploadedLabel</div>
+                            <div class="mreports-col-rows">@row.RowsCount.ToString("N0")</div>
+                            <div class="mreports-col-changes">@row.ChangesCount.ToString("N0")</div>
+
+                            <div class="mreports-col-actions" style="position: relative;">
+                                <button type="button" class="mreports-open-btn" @onclick="@(() => ViewReport(row.Id))">
+                                    <span>Open</span>
+                                    <span class="mreports-open-arrow">→</span>
+                                </button>
+
+                                <div class="ent-action-menu-wrap" @onclick:stopPropagation="true">
+                                    <button type="button"
+                                            class="mreports-more-btn @(_openMenuRowId == row.Id ? "active" : "")"
+                                            title="More actions"
+                                            @onclick="@(() => ToggleRowMenu(row.Id))">
+                                        <MudIcon Icon="@Icons.Material.Outlined.MoreHoriz" Size="Size.Small" Style="font-size: 16px;" />
+                                    </button>
+
+                                    @if (_openMenuRowId == row.Id)
+                                    {
+                                        <div class="ent-action-menu-backdrop" @onclick="CloseRowMenu"></div>
+                                        <div class="ent-action-menu-dropdown">
+                                            <button type="button" class="ent-action-menu-item" @onclick="@(() => { CloseRowMenu(); ViewReport(row.Id); })">
+                                                <MudIcon Icon="@Icons.Material.Outlined.OpenInNew" Style="font-size: 15px; color: #64748b;" />
+                                                <span>Open report</span>
+                                            </button>
+                                            <button type="button" class="ent-action-menu-item" @onclick="@(async () => { CloseRowMenu(); await ExportExcelAsync(row); })">
+                                                <MudIcon Icon="@Icons.Material.Outlined.FileDownload" Style="font-size: 15px; color: #64748b;" />
+                                                <span>Export Excel (.xlsx)</span>
+                                            </button>
+                                            <button type="button" class="ent-action-menu-item" @onclick="@(() => { CloseRowMenu(); NavigationManager.NavigateTo("/wo-list"); })">
+                                                <MudIcon Icon="@Icons.Material.Outlined.TableChart" Style="font-size: 15px; color: #64748b;" />
+                                                <span>View in Work Order Archive</span>
+                                            </button>
+                                            <div class="ent-action-menu-divider"></div>
+                                            <button type="button" class="ent-action-menu-item danger" @onclick="@(async () => { CloseRowMenu(); await DeleteReportAsync(row); })">
+                                                <MudIcon Icon="@Icons.Material.Outlined.DeleteOutline" Style="font-size: 15px;" />
+                                                <span>Delete upload</span>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- Table Footer Customized Pagination -->
+            <div class="mreports-footer">
+                <div class="mreports-footer-left">
+                    <div class="mreports-pagesize-group">
+                        <label class="mreports-pagesize-label">Rows per page</label>
+                        <select class="mreports-pagesize-select" value="@_pageSize" @onchange="OnPageSizeChanged">
+                            <option value="5">5</option>
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="0">All (@FilteredRows.Count)</option>
+                        </select>
+                    </div>
+
+                    <span class="mreports-footer-sep">·</span>
+
+                    <div class="mreports-footer-info">
+                        @if (FilteredRows.Any())
+                        {
+                            <span>Showing <strong>@StartRowIndex–@EndRowIndex</strong> of <strong>@FilteredRows.Count</strong></span>
+                        }
+                        else
+                        {
+                            <span>0 of 0</span>
+                        }
+                    </div>
+                </div>
+
+                @if (TotalPages > 1)
+                {
+                    <div class="mreports-pagination">
+                        <button type="button"
+                                class="mreports-page-btn nav"
+                                title="First page"
+                                disabled="@(_currentPage <= 1)"
+                                @onclick="@(() => GoToPage(1))">
+                            «
+                        </button>
+                        <button type="button"
+                                class="mreports-page-btn nav"
+                                title="Previous page"
+                                disabled="@(_currentPage <= 1)"
+                                @onclick="@(() => GoToPage(_currentPage - 1))">
+                            ‹
+                        </button>
+
+                        @for (int p = 1; p <= TotalPages; p++)
+                        {
+                            var pageNum = p;
+                            <button type="button"
+                                    class="mreports-page-btn @(pageNum == _currentPage ? "active" : "")"
+                                    @onclick="@(() => GoToPage(pageNum))">
+                                @pageNum
+                            </button>
+                        }
+
+                        <button type="button"
+                                class="mreports-page-btn nav"
+                                title="Next page"
+                                disabled="@(_currentPage >= TotalPages)"
+                                @onclick="@(() => GoToPage(_currentPage + 1))">
+                            ›
+                        </button>
+                        <button type="button"
+                                class="mreports-page-btn nav"
+                                title="Last page"
+                                disabled="@(_currentPage >= TotalPages)"
+                                @onclick="@(() => GoToPage(TotalPages))">
+                            »
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
 }
 
 @code {
-    private List<UploadHistory> _uploads = new();
     private bool _isLoading = true;
-    private string _searchString = "";
+    private string _searchString = string.Empty;
+    private bool _hideDuplicates = false;
+    private int _duplicateTotalCount = 0;
+    private Guid? _openMenuRowId;
+
+    private int _currentPage = 1;
+    private int _pageSize = 10;
+
+    private List<ReportRowViewModel> _rows = new();
+
+    private class ReportRowViewModel
+    {
+        public Guid Id { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public bool IsCsv { get; set; }
+        public string PeriodLabel { get; set; } = string.Empty;
+        public string UploadedLabel { get; set; } = string.Empty;
+        public int RowsCount { get; set; }
+        public int ChangesCount { get; set; }
+        public bool IsDuplicate { get; set; }
+    }
+
+    private List<ReportRowViewModel> FilteredRows
+    {
+        get
+        {
+            IEnumerable<ReportRowViewModel> query = _rows;
+
+            if (_hideDuplicates)
+            {
+                query = query.Where(r => !r.IsDuplicate);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_searchString))
+            {
+                var q = _searchString.Trim();
+                query = query.Where(r =>
+                    r.FileName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    r.PeriodLabel.Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return query.ToList();
+        }
+    }
+
+    private int EffectivePageSize => _pageSize <= 0 ? Math.Max(1, FilteredRows.Count) : _pageSize;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredRows.Count / (double)EffectivePageSize));
+
+    private List<ReportRowViewModel> PagedRows =>
+        FilteredRows.Skip((_currentPage - 1) * EffectivePageSize).Take(EffectivePageSize).ToList();
+
+    private int StartRowIndex => FilteredRows.Any() ? ((_currentPage - 1) * EffectivePageSize) + 1 : 0;
+    private int EndRowIndex => Math.Min(_currentPage * EffectivePageSize, FilteredRows.Count);
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadReportsAsync();
+    }
+
+    private async Task LoadReportsAsync()
+    {
+        _isLoading = true;
         try
         {
-            _isLoading = true;
-            _uploads = await DbContext.UploadHistories
+            var uploads = await DbContext.UploadHistories
                 .OrderByDescending(u => u.UploadDate)
                 .ToListAsync();
+
+            var builtRows = new List<ReportRowViewModel>();
+
+            for (int i = 0; i < uploads.Count; i++)
+            {
+                var u = uploads[i];
+                int rawRows = u.RawWorkOrders > 0 ? u.RawWorkOrders : u.TotalRows;
+                int changesCount = u.ProcessedApplications - u.UnknownApplications;
+
+                try
+                {
+                    var proc = await ProcessingEngine.ProcessBatchAsync(u.Id);
+                    rawRows = proc.Statistics.RawWorkOrders > 0 ? proc.Statistics.RawWorkOrders : rawRows;
+                    changesCount = proc.MonthlySummary.Items
+                        .Where(x => !x.ApplicationName.Equals("Unknown Application", StringComparison.OrdinalIgnoreCase))
+                        .Sum(x => x.Count);
+                }
+                catch
+                {
+                    if (changesCount < 0) changesCount = 0;
+                }
+
+                bool isDup = false;
+                if (i > 0)
+                {
+                    var prev = builtRows[i - 1];
+                    if (string.Equals(prev.FileName, u.FileName, StringComparison.OrdinalIgnoreCase) &&
+                        prev.RowsCount == rawRows &&
+                        prev.ChangesCount == changesCount)
+                    {
+                        isDup = true;
+                    }
+                }
+
+                builtRows.Add(new ReportRowViewModel
+                {
+                    Id = u.Id,
+                    FileName = u.FileName,
+                    IsCsv = u.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase),
+                    PeriodLabel = InferPeriodLabel(u),
+                    UploadedLabel = u.UploadDate.ToLocalTime().ToString("MMM dd, yyyy · HH:mm"),
+                    RowsCount = rawRows,
+                    ChangesCount = changesCount,
+                    IsDuplicate = isDup
+                });
+            }
+
+            _rows = builtRows;
+            _duplicateTotalCount = _rows.Count(r => r.IsDuplicate);
         }
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private static string InferPeriodLabel(UploadHistory upload)
+    {
+        if (!string.IsNullOrWhiteSpace(upload.FileName))
+        {
+            var monthMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["january"] = 1, ["jan"] = 1,
+                ["february"] = 2, ["feb"] = 2,
+                ["march"] = 3, ["mar"] = 3,
+                ["april"] = 4, ["apr"] = 4,
+                ["may"] = 5,
+                ["june"] = 6, ["jun"] = 6,
+                ["july"] = 7, ["jul"] = 7,
+                ["august"] = 8, ["aug"] = 8,
+                ["september"] = 9, ["sept"] = 9, ["sep"] = 9,
+                ["october"] = 10, ["oct"] = 10,
+                ["november"] = 11, ["nov"] = 11,
+                ["december"] = 12, ["dec"] = 12
+            };
+
+            var m = Regex.Match(upload.FileName, @"(january|february|march|april|may|june|july|august|september|sept|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)['\-\s_]*(\d{4})", RegexOptions.IgnoreCase);
+            if (m.Success && monthMap.TryGetValue(m.Groups[1].Value, out int fMonth) && int.TryParse(m.Groups[2].Value, out int fYear))
+            {
+                return new DateTime(fYear, fMonth, 1).ToString("MMMM yyyy");
+            }
+
+            var numMatch = Regex.Match(upload.FileName, @"(20\d{2})[\-_](\d{1,2})");
+            if (numMatch.Success && int.TryParse(numMatch.Groups[1].Value, out int ny) && int.TryParse(numMatch.Groups[2].Value, out int nm) && nm >= 1 && nm <= 12)
+            {
+                return new DateTime(ny, nm, 1).ToString("MMMM yyyy");
+            }
+        }
+        return upload.UploadDate.ToString("MMMM yyyy");
+    }
+
+    private void OnSearchChanged(ChangeEventArgs e)
+    {
+        _searchString = e.Value?.ToString() ?? string.Empty;
+        _currentPage = 1;
+    }
+
+    private void ToggleHideDuplicates()
+    {
+        _hideDuplicates = !_hideDuplicates;
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page >= 1 && page <= TotalPages)
+        {
+            _currentPage = page;
+        }
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int newSize))
+        {
+            _pageSize = newSize;
+            _currentPage = 1;
         }
     }
 
@@ -86,14 +427,64 @@ else
         NavigationManager.NavigateTo($"/report/{uploadId}");
     }
 
-    private bool FilterFunc1(UploadHistory element) => FilterFunc(element, _searchString);
-
-    private bool FilterFunc(UploadHistory element, string searchString)
+    private void ToggleRowMenu(Guid rowId)
     {
-        if (string.IsNullOrWhiteSpace(searchString))
-            return true;
-        if (element.FileName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
-            return true;
-        return false;
+        _openMenuRowId = _openMenuRowId == rowId ? null : rowId;
+    }
+
+    private void CloseRowMenu()
+    {
+        _openMenuRowId = null;
+    }
+
+    private async Task ExportExcelAsync(ReportRowViewModel row)
+    {
+        try
+        {
+            var bytes = await ReportService.ExportExcelAsync(row.Id);
+            using var streamRef = new DotNetStreamReference(new System.IO.MemoryStream(bytes));
+            var safePeriod = row.PeriodLabel.Replace(" ", "_");
+            await JSRuntime.InvokeVoidAsync("downloadFileFromStream", $"Change_Management_Summary_{safePeriod}.xlsx", streamRef);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting Excel: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteReportAsync(ReportRowViewModel row)
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete '{row.FileName}' ({row.PeriodLabel})? This will permanently delete {row.RowsCount} work orders." },
+            { "ButtonText", "Delete Dataset" },
+            { "Color", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<WO_CM_Review_Automation.Web.Components.Shared.Enterprise.EnterpriseDialog>("Delete Confirmation", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            try
+            {
+                var entity = await DbContext.UploadHistories.FindAsync(row.Id);
+                if (entity != null)
+                {
+                    var wos = await DbContext.WorkOrders.Where(w => w.UploadHistoryId == row.Id).ToListAsync();
+                    DbContext.WorkOrders.RemoveRange(wos);
+                    DbContext.UploadHistories.Remove(entity);
+                    await DbContext.SaveChangesAsync();
+                }
+                Snackbar.Add("Report deleted successfully.", Severity.Success);
+                await LoadReportsAsync();
+                if (_currentPage > TotalPages) _currentPage = TotalPages;
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting report: {ex.Message}", Severity.Error);
+            }
+        }
     }
 }

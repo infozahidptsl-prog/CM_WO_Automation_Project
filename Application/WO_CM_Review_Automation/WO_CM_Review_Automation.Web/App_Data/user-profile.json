@@ -1,0 +1,18 @@
+{
+  "FullName": "Ifteraz hafez",
+  "Email": "ifteraz@primetechbd.com",
+  "Username": "admin",
+  "Password": "admin123",
+  "Role": "Administrator",
+  "JobTitle": "Lead Engineer \u00B7 Change Management",
+  "Division": "Business Support \u00B7 Service \u0026 Operations",
+  "Department": "Support Service",
+  "Phone": "",
+  "AvatarInitials": "IH",
+  "DefaultDocumentVersion": "1.0",
+  "DefaultTemplateVersion": "1.0",
+  "AutoShowTotalRow": true,
+  "NotifyOnCycleCompletion": true,
+  "CompactTableDensity": false,
+  "LastPasswordChanged": "2026-10-21T12:34:58.8534272+00:00"
+}

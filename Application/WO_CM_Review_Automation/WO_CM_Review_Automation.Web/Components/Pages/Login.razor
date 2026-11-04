@@ -1,0 +1,228 @@
+@page "/login"
+@using WO_CM_Review_Automation.Web.Services
+@inject UserSessionService UserSession
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+
+<PageTitle>Sign in - WO CM Review</PageTitle>
+
+<div class="auth-page-shell">
+    <!-- Left Showcase Column -->
+    <div class="auth-showcase-col d-none d-lg-flex">
+        <div class="auth-showcase-top">
+            <div class="auth-brand-badge">
+                <div class="ent-brand-logo">
+                    <MudIcon Icon="@Icons.Material.Outlined.Layers" Size="Size.Small" Style="color: #ffffff;" />
+                </div>
+                <div>
+                    <div class="auth-brand-name">WO-CM Review Automation</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="auth-showcase-middle">
+            <div class="auth-pill-tag">Enterprise Audit &amp; Compliance</div>
+            <h1 class="auth-showcase-heading">
+                Automated work order verification &amp; monthly CM review studio.
+            </h1>
+            <p class="auth-showcase-desc">
+                Parse monthly work order exports, map functional units and team leads automatically, and generate ISO-compliant Change Management review documents in seconds.
+            </p>
+
+            <div class="auth-feature-list">
+                <div class="auth-feature-item">
+                    <div class="auth-feature-icon">
+                        <MudIcon Icon="@Icons.Material.Outlined.TableChart" Style="font-size: 16px;" />
+                    </div>
+                    <div>
+                        <div class="auth-feature-title">WO Archive &amp; Count Summaries</div>
+                        <div class="auth-feature-sub">Instant filtering across POS, DMS, Sales Force App, TechVan, AMS, and LEA.</div>
+                    </div>
+                </div>
+
+                <div class="auth-feature-item">
+                    <div class="auth-feature-icon">
+                        <MudIcon Icon="@Icons.Material.Outlined.Article" Style="font-size: 16px;" />
+                    </div>
+                    <div>
+                        <div class="auth-feature-title">Live CM Review Studio</div>
+                        <div class="auth-feature-sub">Side-by-side interactive Word document preparation with server &amp; SIEM evidence.</div>
+                    </div>
+                </div>
+
+                <div class="auth-feature-item">
+                    <div class="auth-feature-icon">
+                        <MudIcon Icon="@Icons.Material.Outlined.Tune" Style="font-size: 16px;" />
+                    </div>
+                    <div>
+                        <div class="auth-feature-title">Configurable Routing Rules</div>
+                        <div class="auth-feature-sub">Dynamic alias normalization, POC assignment, and change category routing.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="auth-showcase-footer">
+            <span>Business Support · Service &amp; Operations · Support Service</span>
+            <span>Version 1.0.0</span>
+        </div>
+    </div>
+
+    <!-- Right Sign-In Form Column -->
+    <div class="auth-form-col">
+        <div class="auth-card">
+            <!-- Mobile Brand Header -->
+            <div class="d-flex d-lg-none align-center gap-2 mb-6">
+                <div class="ent-brand-logo">
+                    <MudIcon Icon="@Icons.Material.Outlined.Layers" Size="Size.Small" Style="color: #ffffff;" />
+                </div>
+                <div>
+                    <div style="font-weight: 700; font-size: 0.92rem; color: var(--color-text-primary);">WO-CM Review Automation</div>
+                </div>
+            </div>
+
+            <div class="auth-card-header">
+                <h2 class="auth-card-title">Sign in to your workspace</h2>
+                <p class="auth-card-subtitle">Enter your enterprise credentials to access WO · CM Review.</p>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <div class="auth-alert-error">
+                    <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Style="font-size: 16px; flex-shrink: 0;" />
+                    <span>@_errorMessage</span>
+                </div>
+            }
+
+            <form @onsubmit="HandleLoginAsync" @onsubmit:preventDefault="true" class="auth-form">
+                <div class="auth-field-group">
+                    <label class="auth-label">Username or Email</label>
+                    <div class="auth-input-wrap">
+                        <MudIcon Icon="@Icons.Material.Outlined.PersonOutline" Class="auth-input-icon" Style="font-size: 17px;" />
+                        <input type="text"
+                               class="auth-input"
+                               placeholder="admin or amirul.islam@banglalink.net"
+                               @bind="_identifier"
+                               @bind:event="oninput"
+                               autocomplete="username" />
+                    </div>
+                </div>
+
+                <div class="auth-field-group">
+                    <div class="d-flex align-center justify-space-between">
+                        <label class="auth-label">Password</label>
+                        <button type="button" class="auth-Demo-fill-btn" @onclick="FillDefaultCredentials">
+                            Fill default credentials
+                        </button>
+                    </div>
+                    <div class="auth-input-wrap">
+                        <MudIcon Icon="@Icons.Material.Outlined.Lock" Class="auth-input-icon" Style="font-size: 17px;" />
+                        <input type="@(_showPassword ? "text" : "password")"
+                               class="auth-input"
+                               placeholder="Enter your password"
+                               @bind="_password"
+                               @bind:event="oninput"
+                               autocomplete="current-password" />
+                        <button type="button"
+                                class="auth-pwd-toggle"
+                                @onclick="@(() => _showPassword = !_showPassword)"
+                                title="@(_showPassword ? "Hide password" : "Show password")">
+                            <MudIcon Icon="@(_showPassword ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)" Style="font-size: 16px;" />
+                        </button>
+                    </div>
+                </div>
+
+                <div class="auth-options-row">
+                    <label class="auth-checkbox-label">
+                        <input type="checkbox" @bind="_rememberMe" />
+                        <span>Keep me signed in on this device</span>
+                    </label>
+                </div>
+
+                <button type="submit" class="auth-submit-btn" disabled="@_isSubmitting">
+                    @if (_isSubmitting)
+                    {
+                        <span>Signing in...</span>
+                    }
+                    else
+                    {
+                        <span>Sign in</span>
+                        <MudIcon Icon="@Icons.Material.Outlined.ArrowForward" Style="font-size: 16px;" />
+                    }
+                </button>
+            </form>
+
+            <!-- Quick Credentials Hint Card -->
+            <div class="auth-credentials-hint">
+                <div class="d-flex align-center justify-space-between mb-1">
+                    <span class="auth-hint-title">Default Administrator Account</span>
+                    <span class="auth-hint-badge">Active</span>
+                </div>
+                <div class="auth-hint-grid">
+                    <div>
+                        <span class="auth-hint-k">Username:</span>
+                        <code class="auth-hint-v">@UserSession.Profile.Username</code>
+                    </div>
+                    <div>
+                        <span class="auth-hint-k">Password:</span>
+                        <code class="auth-hint-v">@UserSession.Profile.Password</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _identifier = string.Empty;
+    private string _password = string.Empty;
+    private bool _rememberMe = true;
+    private bool _showPassword = false;
+    private bool _isSubmitting = false;
+    private string _errorMessage = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        _identifier = UserSession.Profile.Username;
+    }
+
+    private void FillDefaultCredentials()
+    {
+        _identifier = UserSession.Profile.Username;
+        _password = UserSession.Profile.Password;
+        _errorMessage = string.Empty;
+    }
+
+    private async Task HandleLoginAsync()
+    {
+        _errorMessage = string.Empty;
+        _isSubmitting = true;
+
+        try
+        {
+            var (success, error) = UserSession.ValidateAndLogin(_identifier, _password);
+            if (!success)
+            {
+                _errorMessage = error;
+                return;
+            }
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("woAuthSession.setState", UserSession.Profile.Username, _rememberMe);
+            }
+            catch
+            {
+                // Ignore JS storage errors
+            }
+
+            Snackbar.Add($"Welcome back, {UserSession.Profile.FullName}!", Severity.Success, cfg => cfg.VisibleStateDuration = 2000);
+            NavigationManager.NavigateTo("/");
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+}
