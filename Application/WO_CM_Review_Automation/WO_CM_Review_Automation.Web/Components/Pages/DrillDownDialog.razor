@@ -1,0 +1,41 @@
+@using WO_CM_Review_Automation.Domain.Entities
+@using WO_CM_Review_Automation.Application.Processing
+
+<EnterpriseDialog Title="@($"Work Orders: {ApplicationName}")">
+    <TitleContent>
+        <div class="d-flex align-center">
+            <MudIcon Icon="@Icons.Material.Filled.Apps" Class="mr-2" />
+            <MudText Typo="Typo.h5" Class="ent-text-h2">@ApplicationName</MudText>
+            <MudSpacer />
+            <MudChip T="string" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">@WorkOrders.Count Total</MudChip>
+        </div>
+    </TitleContent>
+    <ChildContent>
+        <div style="height: 60vh;">
+            <EnterpriseDataGrid T="ProcessedWorkOrder" Items="@WorkOrders" Height="100%">
+                <Columns>
+                    <PropertyColumn T="ProcessedWorkOrder" TProperty="string" Property="x => x.WoId" Title="WO ID" />
+                    <PropertyColumn T="ProcessedWorkOrder" TProperty="string" Property="x => x.OriginalServiceName" Title="Original Service" />
+                    <PropertyColumn T="ProcessedWorkOrder" TProperty="string" Property="x => x.Vendor" Title="Vendor" />
+                    <PropertyColumn T="ProcessedWorkOrder" TProperty="string" Property="x => x.Issuer" Title="Issuer" />
+                </Columns>
+            </EnterpriseDataGrid>
+        </div>
+    </ChildContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="ent-btn" OnClick="CloseDialog">Close</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Download">Export Excel</MudButton>
+    </DialogActions>
+</EnterpriseDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public string ApplicationName { get; set; } = string.Empty;
+    [Parameter] public List<ProcessedWorkOrder> WorkOrders { get; set; } = new();
+
+    private void CloseDialog()
+    {
+        MudDialog.Cancel();
+    }
+}

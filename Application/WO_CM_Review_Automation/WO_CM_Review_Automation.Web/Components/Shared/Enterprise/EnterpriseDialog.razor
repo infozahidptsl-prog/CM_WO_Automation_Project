@@ -1,0 +1,75 @@
+@inherits MudComponentBase
+
+<MudDialog Class="ent-dialog" Style="@Style" @attributes="UserAttributes">
+    <TitleContent>
+        @if (TitleContent != null)
+        {
+            @TitleContent
+        }
+        else if (!string.IsNullOrEmpty(Title))
+        {
+            <MudText Typo="Typo.h5" Class="ent-text-h2">@Title</MudText>
+        }
+    </TitleContent>
+    <DialogContent>
+        <div class="ent-p-md">
+            @if (!string.IsNullOrEmpty(ContentText))
+            {
+                <MudText>@ContentText</MudText>
+            }
+            @ChildContent
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <div class="d-flex justify-end w-100 ent-p-md ent-gap-md" style="border-top: 1px solid var(--color-border); background-color: var(--color-bg-app); border-bottom-left-radius: var(--radius-xl); border-bottom-right-radius: var(--radius-xl);">
+            @if (DialogActions != null)
+            {
+                @DialogActions
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="ent-btn" OnClick="Cancel">Cancel</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" OnClick="Submit">@SubmitText</MudButton>
+            }
+        </div>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? TitleContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? DialogActions { get; set; }
+    [Parameter] public string SubmitText { get; set; } = "Save";
+    
+    [Parameter] public string ContentText { get; set; } = string.Empty;
+    
+    [Parameter] public EventCallback OnSubmit { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    
+    private async Task Submit()
+    {
+        if (OnSubmit.HasDelegate)
+        {
+            await OnSubmit.InvokeAsync();
+        }
+        else
+        {
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+    }
+    
+    private async Task Cancel()
+    {
+        if (OnCancel.HasDelegate)
+        {
+            await OnCancel.InvokeAsync();
+        }
+        else
+        {
+            MudDialog?.Cancel();
+        }
+    }
+}

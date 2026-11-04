@@ -1,0 +1,48 @@
+@inherits MudComponentBase
+
+<div class="ent-upload-zone w-100 relative" style="max-width: 600px;">
+    <div class="@_dragClass" style="background-color: var(--color-bg-app); border: 2px dashed var(--color-border); border-radius: var(--radius-lg); padding: 48px 24px; text-align: center; transition: all var(--transition-fast);">
+        <InputFile OnChange="OnFilesChanged" accept="@Accept" class="absolute w-100 h-100 z-20" style="opacity: 0; top: 0; left: 0; cursor: pointer;"
+                   @ondragenter="@SetDragClass" @ondragleave="@ClearDragClass" @ondragend="@ClearDragClass" />
+        
+        <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Style="font-size: 64px; color: var(--color-primary);" Class="mb-4" />
+        <MudText Typo="Typo.h6" Class="ent-text-h2 mb-1">Drag and drop file here</MudText>
+        <MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);" Class="mb-4">or click to browse</MudText>
+        <MudText Typo="Typo.caption" Class="ent-text-caption">@HelperText</MudText>
+        
+        @if (SelectedFile != null)
+        {
+            <div class="mt-6">
+                <MudChip T="string" Color="Color.Success" Class="font-weight-bold" Icon="@Icons.Material.Filled.CheckCircle" Variant="Variant.Filled">@SelectedFile.Name</MudChip>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Accept { get; set; } = ".xlsx";
+    [Parameter] public string HelperText { get; set; } = "Supported format: Excel (.xlsx)";
+    [Parameter] public IBrowserFile? SelectedFile { get; set; }
+    [Parameter] public EventCallback<IBrowserFile> SelectedFileChanged { get; set; }
+
+    private string _dragClass = "ent-upload-area relative";
+
+    private async Task OnFilesChanged(InputFileChangeEventArgs e)
+    {
+        Console.WriteLine($"[EnterpriseUploadZone] OnFilesChanged fired! File: {e.File?.Name}");
+        ClearDragClass();
+        var file = e.File;
+        SelectedFile = file;
+        await SelectedFileChanged.InvokeAsync(file);
+    }
+
+    private void SetDragClass()
+    {
+        _dragClass = "ent-upload-area relative mud-elevation-2";
+    }
+
+    private void ClearDragClass()
+    {
+        _dragClass = "ent-upload-area relative";
+    }
+}

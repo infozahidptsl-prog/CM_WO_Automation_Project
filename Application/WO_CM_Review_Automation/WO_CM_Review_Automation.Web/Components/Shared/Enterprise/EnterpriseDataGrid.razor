@@ -1,0 +1,29 @@
+@typeparam T
+@inherits MudComponentBase
+
+<MudDataGrid T="T" Items="@Items" Class="@($"ent-table {Class}")" Style="@Style" Dense="true" Hover="true" Bordered="false" Striped="false" FixedHeader="true" Filterable="true" SortMode="SortMode.Multiple" Groupable="false" ShowColumnOptions="true" ColumnResizeMode="ResizeMode.Container" Virtualize="true" Height="@Height" @attributes="UserAttributes">
+    <ToolBarContent>
+        @if (ToolBarContent != null)
+        {
+            @ToolBarContent
+        }
+        else if (!string.IsNullOrEmpty(Title))
+        {
+            <MudText Typo="Typo.h6" Class="ent-text-h3">@Title</MudText>
+        }
+    </ToolBarContent>
+    <Columns>
+        @Columns
+    </Columns>
+    <PagerContent>
+        <MudDataGridPager T="T" PageSizeOptions="new int[]{20, 50, 100, 250}" />
+    </PagerContent>
+</MudDataGrid>
+
+@code {
+    [Parameter] public IEnumerable<T> Items { get; set; } = Enumerable.Empty<T>();
+    [Parameter] public RenderFragment? Columns { get; set; }
+    [Parameter] public RenderFragment? ToolBarContent { get; set; }
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Height { get; set; } = "400px";
+}

@@ -1,0 +1,1 @@
+.ent-fade-in { animation: fadeIn var(--transition-fast) ease-in-out; } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

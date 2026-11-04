@@ -1,0 +1,446 @@
+@using WO_CM_Review_Automation.Application.ViewModels.CMReview
+@using MudBlazor
+
+<div id="live-preview-content" class="preview-container pa-6" style="border: 1px solid #ccc; background: white; min-height: 800px; color: black; font-family: Arial, sans-serif;">
+    @if (DocumentModel == null)
+    {
+        <MudText Align="Align.Center">No document loaded.</MudText>
+    }
+    else
+    {
+        var monthStr = System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(DocumentModel.ReportingMonth);
+        var periodStr = $"{monthStr}'{DocumentModel.ReportingYear}";
+        var hasAnyChanges = DocumentModel.ChangeCategories.Any(c => c.HasChanges);
+        
+        var hasSpecificChanges = DocumentModel.ChangeCategories.Any(c => c.HasChanges && 
+            (c.CategoryName.Contains("Standard", StringComparison.OrdinalIgnoreCase) || 
+             c.CategoryName.Contains("Change Request", StringComparison.OrdinalIgnoreCase) || 
+             c.CategoryName.Contains("Normal", StringComparison.OrdinalIgnoreCase) ||
+             DocumentModel.Application == "Techvan"));
+        
+        var hasFigure2 = DocumentModel.ExcelScreenshot != null && (!string.IsNullOrWhiteSpace(DocumentModel.ExcelScreenshot.Base64Data) || !string.IsNullOrWhiteSpace(DocumentModel.ExcelScreenshot.StorageReference));
+
+
+        <!-- Header Table Mockup -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div style="flex: 1;"></div>
+            <div style="flex: 1; text-align: center;">
+                <MudText Typo="Typo.body1" Style="color: blue;">Internal</MudText>
+            </div>
+            <div style="flex: 1; text-align: right;">
+                <img src="/logo.png" onerror="this.onerror=null;this.src='/favicon.png';" alt="Logo" style="max-height: 40px;" />
+            </div>
+        </div>
+
+        <!-- Title Block -->
+        <div style="border-bottom: 2px solid gray; margin-bottom: 2rem;">
+            <MudText Typo="Typo.subtitle1" Style="color: gray;">T15.02.b.1: Change Request Initiation & Control</MudText>
+        </div>
+
+        <div style="margin-bottom: 2rem;">
+            <MudText Typo="Typo.h4" Style="font-weight: bold; margin-bottom: 0;">Process for Change Management Review:</MudText>
+            <MudText Typo="Typo.h4" Style="font-style: italic;">Registered Change vs. Implemented Change</MudText>
+        </div>
+
+        <MudText Typo="Typo.body1" Class="mb-4">The objective of this artifact is to enable verification between Available Change Log and Registered Changes and to certify or identify presence of unauthorized changes.</MudText>
+
+        <MudText Typo="Typo.h6" Style="font-weight: bold;">Applicable System: @DocumentModel.Application</MudText>
+        <MudText Typo="Typo.h6" Style="font-weight: bold; text-decoration: underline;" Class="mb-6">Period: @periodStr</MudText>
+
+        <!-- Section A -->
+        <MudText Typo="Typo.h6" Style="font-weight: bold;">(A) Available Change Log at @DocumentModel.Application as per Change Management Scope</MudText>
+        <MudText Typo="Typo.h6" Style="font-weight: bold;" Class="mb-4">Latest Screenshot</MudText>
+        
+        @if (!hasAnyChanges)
+        {
+            <MudText Typo="Typo.body1" Class="mb-4">As per the screenshot below, there was no change made in the @DocumentModel.Application system for the month of @monthStr-@DocumentModel.ReportingYear.</MudText>
+        }
+        else
+        {
+            var allCategoriesWithChanges = DocumentModel.ChangeCategories
+                .Where(c => c.HasChanges && c.ChangeDetails.Any())
+                .OrderByDescending(c => c.CategoryName.StartsWith("Implementation of Change Request", StringComparison.OrdinalIgnoreCase) || 
+                                        c.CategoryName.StartsWith("Business Logic", StringComparison.OrdinalIgnoreCase))
+                .ThenBy(c => c.DisplayOrder)
+                .ToList();
+            if (allCategoriesWithChanges.Any())
+            {
+                    var changeParts = new List<string>();
+                    foreach (var cat in allCategoriesWithChanges)
+                    {
+                        var count = cat.ChangeDetails.Count;
+                        var countWord = count switch { 1 => "One", 2 => "Two", 3 => "Three", 4 => "Four", 5 => "Five", 6 => "Six", 7 => "Seven", 8 => "Eight", 9 => "Nine", 10 => "Ten", _ => count.ToString() };
+                        
+                        string categoryKeyword = "";
+                        var firstWoId = cat.ChangeDetails.FirstOrDefault()?.ChangeOrder.Replace("WO ", "", StringComparison.OrdinalIgnoreCase).Replace("WO", "", StringComparison.OrdinalIgnoreCase).Replace("CR ", "", StringComparison.OrdinalIgnoreCase).Replace("CR", "", StringComparison.OrdinalIgnoreCase).Trim();
+                        var woItem = firstWoId != null ? DocumentModel.WOReportItems.FirstOrDefault(w => w.WoId == firstWoId) : null;
+                        
+                        if (woItem != null && !string.IsNullOrWhiteSpace(woItem.ChangeType))
+                        {
+                            categoryKeyword = woItem.ChangeType;
+                        }
+                        else
+                        {
+                            categoryKeyword = cat.CategoryName.Replace(" Change", "", StringComparison.OrdinalIgnoreCase).Replace("Change", "", StringComparison.OrdinalIgnoreCase).Trim();
+                        }
+
+                        var orders = string.Join(", ", cat.ChangeDetails.Select(d => d.ChangeOrder));
+                        
+                        if (count == 1)
+                        {
+                            changeParts.Add($"{countWord} {categoryKeyword} ({orders}) change");
+                        }
+                        else
+                        {
+                            changeParts.Add($"{countWord} {categoryKeyword} changes ({orders})");
+                        }
+                    }
+                    
+                    var changesSummary = changeParts.Count > 1 
+                        ? string.Join(" and ", changeParts.Take(changeParts.Count - 1)) + " and " + changeParts.Last()
+                        : changeParts[0];
+                        
+                    string wereOrWas = allCategoriesWithChanges.Sum(c => c.ChangeDetails.Count) == 1 ? "was" : "were";
+                    <MudText Typo="Typo.body1" Class="mb-4" Style="font-size: 1.25rem;">As per the screenshot below, @changesSummary @wereOrWas made in the @DocumentModel.Application system for the month of @periodStr.</MudText>
+            }
+            else
+            {
+                string changesText = DocumentModel.WOReportItems.Count == 1 ? "there was a change made" : "there were changes made";
+                <MudText Typo="Typo.body1" Class="mb-4" Style="font-size: 1.25rem;">As per the screenshot below, @changesText in the @DocumentModel.Application system for the month of @periodStr.</MudText>
+            }
+        }
+
+        @if (DocumentModel.ServerEvidences.Any(s => s.Screenshots.Any()))
+        {
+            @if (DocumentModel.Application == "Sales Force App")
+            {
+                var allShots = DocumentModel.ServerEvidences
+                    .SelectMany(s => s.Screenshots)
+                    .OrderBy(s => 
+                    {
+                        var match = System.Text.RegularExpressions.Regex.Match(s.FileName ?? "", @"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?!\d)");
+                        return match.Success && Version.TryParse(match.Value, out var v) ? v : new Version(999,999,999,999);
+                    })
+                    .ThenBy(s => s.FileName)
+                    .ToList();
+                
+                @foreach (var shot in allShots)
+                {
+                    var fileNameNoExt = !string.IsNullOrEmpty(shot.FileName) ? System.IO.Path.GetFileNameWithoutExtension(shot.FileName) : "";
+                    var displayTitle = "";
+                    if (!string.IsNullOrWhiteSpace(fileNameNoExt))
+                    {
+                        var hasIp = System.Text.RegularExpressions.Regex.IsMatch(fileNameNoExt, @"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?!\d)");
+                        if (hasIp)
+                            displayTitle = $"Server: {fileNameNoExt}";
+                        else
+                        {
+                            var parentServer = DocumentModel.ServerEvidences.FirstOrDefault(se => se.Screenshots.Contains(shot));
+                            displayTitle = $"Server: {parentServer?.ServerIp ?? ""} {fileNameNoExt}".Trim();
+                        }
+                    }
+                    else
+                    {
+                        var parentServer = DocumentModel.ServerEvidences.FirstOrDefault(se => se.Screenshots.Contains(shot));
+                        if (!string.IsNullOrWhiteSpace(parentServer?.ServerIp)) displayTitle = $"Server: {parentServer.ServerIp}";
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(displayTitle))
+                    {
+                        <MudText Typo="Typo.body1" Class="mb-1" Style="margin-left: 2rem;"><strong>@displayTitle</strong></MudText>
+                    }
+                    
+                    <div style="text-align: left; margin-bottom: 1rem; margin-left: 2rem;">
+                        <img src="@(shot.Base64Data ?? $"/{shot.StorageReference}")" alt="@shot.Caption" style="max-width: 100%; height: auto; display: block;" />
+                    </div>
+                }
+                
+                @foreach (var server in DocumentModel.ServerEvidences.OrderBy(s => s.DisplayOrder))
+                {
+                    @if (!string.IsNullOrWhiteSpace(server.Remarks))
+                    {
+                        <MudText Typo="Typo.body1" Style="font-style: italic; margin-left: 2rem;" Class="mb-4">*Note: @server.Remarks</MudText>
+                    }
+                }
+            }
+            else
+            {
+                @foreach (var server in DocumentModel.ServerEvidences.OrderBy(s => s.DisplayOrder))
+                {
+                    if (!server.Screenshots.Any()) continue;
+                    
+                    @if (!string.IsNullOrWhiteSpace(server.ServerIp))
+                    {
+                        <MudText Typo="Typo.body1" Class="mb-1" Style="margin-left: 2rem;"><strong>Server: @server.ServerIp</strong></MudText>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(server.ServerName))
+                    {
+                        <MudText Typo="Typo.body1" Class="mb-2" Style="margin-left: 2rem;"><strong>@server.ServerName</strong></MudText>
+                    }
+                    
+                    @foreach (var shot in server.Screenshots.OrderBy(s => s.DisplayOrder))
+                    {
+                        <div style="text-align: left; margin-bottom: 1rem; margin-left: 2rem;">
+                            <img src="@(shot.Base64Data ?? $"/{shot.StorageReference}")" alt="@shot.Caption" style="max-width: 100%; height: auto; display: block;" />
+                        </div>
+                    }
+                    
+                    @if (!string.IsNullOrWhiteSpace(server.Remarks))
+                    {
+                        <MudText Typo="Typo.body1" Style="font-style: italic; margin-left: 2rem;" Class="mb-4">*Note: @server.Remarks</MudText>
+                    }
+                }
+            }
+        }
+
+        <!-- Section B -->
+        @for (int i = 0; i < DocumentModel.ChangeCategories.Count; i++)
+        {
+            int currentIndex = i;
+            var cat = DocumentModel.ChangeCategories[currentIndex];
+            <MudText Typo="Typo.h6" Style="font-weight: bold;" Class="mt-4">@(currentIndex + 1). @cat.CategoryName</MudText>
+            @if (cat.HasChanges)
+            {
+                var count = cat.ChangeDetails.Count;
+                var countWord = count switch { 1 => "One", 2 => "Two", 3 => "Three", 4 => "Four", 5 => "Five", 6 => "Six", 7 => "Seven", 8 => "Eight", 9 => "Nine", 10 => "Ten", _ => count.ToString() };
+                var isPlural = count > 1;
+
+                var firstId = cat.ChangeDetails.FirstOrDefault()?.ChangeOrder;
+                var parsedFirstId = firstId?.Replace("WO ", "", StringComparison.OrdinalIgnoreCase).Replace("WO", "", StringComparison.OrdinalIgnoreCase).Replace("CR ", "", StringComparison.OrdinalIgnoreCase).Replace("CR", "", StringComparison.OrdinalIgnoreCase).Trim();
+                var woItem = parsedFirstId != null ? DocumentModel.WOReportItems.FirstOrDefault(w => w.WoId == parsedFirstId) : null;
+                
+                string changeType = "";
+                if (woItem != null && !string.IsNullOrWhiteSpace(woItem.ChangeType))
+                {
+                    changeType = woItem.ChangeType;
+                }
+                else
+                {
+                    changeType = cat.CategoryName.Replace(" Change", "", StringComparison.OrdinalIgnoreCase).Replace("Change", "", StringComparison.OrdinalIgnoreCase).Trim();
+                }
+
+                var changeModifier = "";
+                if (!cat.CategoryName.Equals("Standard Change", StringComparison.OrdinalIgnoreCase) && 
+                    (changeType.Equals("Normal-minor", StringComparison.OrdinalIgnoreCase) || changeType.Equals("Normal-major", StringComparison.OrdinalIgnoreCase)))
+                {
+                    changeModifier = $"{changeType} ";
+                }
+
+                var changeWord = isPlural ? $"{changeModifier}changes were" : $"{changeModifier}change was";
+                var numberWord = isPlural ? "numbers are" : "number is";
+                
+                var coNumbers = string.Join(", ", cat.ChangeDetails.Select(d => d.ChangeOrder.Replace("WO ", "", StringComparison.OrdinalIgnoreCase).Replace("WO", "", StringComparison.OrdinalIgnoreCase).Replace("CR ", "", StringComparison.OrdinalIgnoreCase).Replace("CR", "", StringComparison.OrdinalIgnoreCase).Trim()));
+                var coText = $"(WO {coNumbers})";
+
+                <MudText Typo="Typo.body1" Class="ml-4">@($"{countWord} {changeWord} made under this change category. Change order {numberWord}:")</MudText>
+                <MudText Typo="Typo.body1" Class="ml-4 mb-4">@coText</MudText>
+
+                @foreach (var detail in cat.ChangeDetails)
+                {
+                    string coNum = detail.ChangeOrder.Replace("WO ", "", StringComparison.OrdinalIgnoreCase).Replace("WO", "", StringComparison.OrdinalIgnoreCase).Replace("CR ", "", StringComparison.OrdinalIgnoreCase).Replace("CR", "", StringComparison.OrdinalIgnoreCase).Trim();
+                    string scheduleDateStr = detail.ScheduleDate.HasValue ? detail.ScheduleDate.Value.ToString("dd-MM-yyyy hh:mm:ss tt") : "";
+                    
+                    <div class="ml-4 mb-4">
+                        <MudText Typo="Typo.body1"><strong>Change Order: </strong>@coNum</MudText>
+                        <MudText Typo="Typo.body1"><strong>Change Description: </strong>@detail.Description</MudText>
+                        <MudText Typo="Typo.body1"><strong>Execution End Date: </strong>@scheduleDateStr</MudText>
+                    </div>
+                    
+                    @if (detail.DeploymentScreenshots != null && detail.DeploymentScreenshots.Any())
+                    {
+                        var masterGroups = detail.DeploymentScreenshots
+                            .OrderBy(s => s.DisplayOrder)
+                            .GroupBy(s => s.Heading ?? "Screenshot")
+                            .ToList();
+                            
+                        @foreach (var masterGroup in masterGroups)
+                        {
+                            <MudText Typo="Typo.h6" Style="font-weight: bold;" Class="mb-2 mt-4">@masterGroup.Key</MudText>
+                            
+                            var serverGroups = masterGroup.GroupBy(s => (s.ServerIp ?? "", s.ServerName ?? ""));
+                            foreach (var serverGroup in serverGroups)
+                            {
+                                string serverIp = serverGroup.Key.Item1;
+                                string serverName = serverGroup.Key.Item2;
+                                string serverDisplay = !string.IsNullOrWhiteSpace(serverName) ? $" ({serverName})" : "";
+                                
+                                @if (DocumentModel.Application == "Sales Force App")
+                                {
+                                    @foreach (var shot in serverGroup)
+                                    {
+                                        var fileNameNoExt = !string.IsNullOrEmpty(shot.FileName) ? System.IO.Path.GetFileNameWithoutExtension(shot.FileName) : "";
+                                        var displayTitle = "";
+                                        if (!string.IsNullOrWhiteSpace(fileNameNoExt))
+                                        {
+                                            var hasIp = System.Text.RegularExpressions.Regex.IsMatch(fileNameNoExt, @"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?!\d)");
+                                            if (hasIp)
+                                                displayTitle = $"Server: {fileNameNoExt}";
+                                            else
+                                                displayTitle = $"Server: {serverIp} {fileNameNoExt}".Trim();
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(serverIp))
+                                        {
+                                            displayTitle = $"Server: {serverIp}";
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(displayTitle))
+                                        {
+                                            <MudText Typo="Typo.body1" Class="mb-1" Style="margin-left: 2rem;"><strong>@displayTitle</strong></MudText>
+                                        }
+                                        <div style="text-align: left; margin-bottom: 1rem; margin-left: 2rem;">
+                                            <img src="@(shot.Base64Data ?? $"/{shot.StorageReference}")" style="max-width: 100%; height: auto; display: block;" />
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    @if (!string.IsNullOrWhiteSpace(serverIp))
+                                    {
+                                        <MudText Typo="Typo.body1" Class="mb-1" Style="margin-left: 2rem;"><strong>Server: @serverIp</strong></MudText>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(serverName))
+                                    {
+                                        <MudText Typo="Typo.body1" Class="mb-2" Style="margin-left: 2rem;"><strong>@serverName:</strong></MudText>
+                                    }
+                                    
+                                    @foreach (var shot in serverGroup)
+                                    {
+                                        <div style="text-align: left; margin-bottom: 1rem; margin-left: 2rem;">
+                                            <img src="@(shot.Base64Data ?? $"/{shot.StorageReference}")" style="max-width: 100%; height: auto; display: block;" />
+                                        </div>
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                <MudText Typo="Typo.body1" Class="ml-4 mb-2">No change.</MudText>
+            }
+        }
+
+        <!-- UAT -->
+        <MudText Typo="Typo.h6" Style="font-weight: bold;" Class="mt-4">9. UAT</MudText>
+        @if (string.IsNullOrWhiteSpace(DocumentModel.UATStatement))
+        {
+            @if (hasSpecificChanges)
+            {
+                <MudText Typo="Typo.body1" Class="ml-4 mb-4">UAT was conducted of the above changes as per Banglalink change management policy for the month of @monthStr-@DocumentModel.ReportingYear.</MudText>
+            }
+            else if (!hasAnyChanges)
+            {
+                <MudText Typo="Typo.body1" Class="ml-4 mb-4">There was No UAT conducted in @DocumentModel.Application for the month of @monthStr-@DocumentModel.ReportingYear, as there was No change.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body1" Class="ml-4 mb-4">There was No UAT conducted in @DocumentModel.Application for the month of @monthStr-@DocumentModel.ReportingYear.</MudText>
+            }
+        }
+        else
+        {
+            <MudText Typo="Typo.body1" Class="ml-4 mb-4">@DocumentModel.UATStatement</MudText>
+        }
+
+        <!-- Section C -->
+        <MudText Typo="Typo.h6" Style="font-weight: bold;">10. Registered Changes, Change Management Report, @monthStr-@DocumentModel.ReportingYear.</MudText>
+        <MudText Typo="Typo.subtitle1" Style="font-weight: bold;" Class="mb-2">IT Change Orders Summary & Details, @monthStr- @DocumentModel.ReportingYear</MudText>
+        
+        @if (!hasAnyChanges)
+        {
+            <MudText Typo="Typo.body1" Class="mb-4">As per the Change Order Summary Dump (Figure 1), no change was made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</MudText>
+        }
+        else
+        {
+            var totalChangesCount = DocumentModel.ChangeCategories.Where(c => c.HasChanges).SelectMany(c => c.ChangeDetails).Count();
+            if (totalChangesCount == 0) totalChangesCount = DocumentModel.WOReportItems.Count; // fallback
+            
+            var countWord = totalChangesCount switch { 1 => "One", 2 => "Two", 3 => "Three", 4 => "Four", 5 => "Five", 6 => "Six", 7 => "Seven", 8 => "Eight", 9 => "Nine", 10 => "Ten", _ => totalChangesCount.ToString() };
+            string changePlural = totalChangesCount == 1 ? "change was" : "changes were";
+            
+            if (hasSpecificChanges && hasFigure2)
+            {
+                <MudText Typo="Typo.body1" Class="mb-4">As per the Change Order Summary Dump (Figure 1) & (Figure 2), @countWord @changePlural made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body1" Class="mb-4">As per the Change Order Summary Dump (Figure 1), @countWord @changePlural made in the month of @monthStr-@DocumentModel.ReportingYear in @DocumentModel.Application.</MudText>
+            }
+        }
+
+        @if (DocumentModel.SummaryTableScreenshot != null && (!string.IsNullOrWhiteSpace(DocumentModel.SummaryTableScreenshot.Base64Data) || !string.IsNullOrWhiteSpace(DocumentModel.SummaryTableScreenshot.StorageReference)))
+        {
+            <div style="text-align: center; margin-bottom: 2rem;">
+                <img src="@(DocumentModel.SummaryTableScreenshot.Base64Data ?? $"/{DocumentModel.SummaryTableScreenshot.StorageReference}")" alt="Summary Table" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+                <MudText Typo="Typo.subtitle1" Style="font-weight: bold; text-decoration: underline;" Class="mt-2">Figure -1</MudText>
+            </div>
+        }
+        
+        @if (hasSpecificChanges && hasFigure2)
+        {
+            <div style="text-align: center; margin-bottom: 2rem;">
+                <img src="@(DocumentModel.ExcelScreenshot.Base64Data ?? $"/{DocumentModel.ExcelScreenshot.StorageReference}")" alt="Excel Dump" style="max-width: 100%; height: auto; display: block; margin: 0 auto;" />
+                <MudText Typo="Typo.subtitle1" Style="font-weight: bold; text-decoration: underline;" Class="mt-2">Figure -2</MudText>
+            </div>
+        }
+
+        @if (DocumentModel.Application == "POS" && DocumentModel.SiemScreenshot != null && (!string.IsNullOrWhiteSpace(DocumentModel.SiemScreenshot.Base64Data) || !string.IsNullOrWhiteSpace(DocumentModel.SiemScreenshot.StorageReference)))
+        {
+            <div style="margin-bottom: 2rem;">
+                <MudText Typo="Typo.body1" Style="font-weight: bold;" Class="mb-2">Mentioned attached SIEM is a standard change. It should not be part of the CM review for @monthStr-@DocumentModel.ReportingYear.</MudText>
+                <div style="text-align: left;">
+                    @if (!string.IsNullOrEmpty(DocumentModel.SiemScreenshot.FileName) && (DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsb", StringComparison.OrdinalIgnoreCase) || DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) || DocumentModel.SiemScreenshot.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        <div style="display: inline-block; text-align: center; margin-top: 10px; margin-left: 20px;">
+                            <img src="/excel_icon.png" alt="Excel File" style="width: 48px; height: 48px; display: block; margin: 0 auto 5px auto;" />
+                            <MudText Typo="Typo.body2" Style="width: 150px; word-wrap: break-word; line-height: 1.2;">@DocumentModel.SiemScreenshot.FileName</MudText>
+                        </div>
+                    }
+                    else
+                    {
+                        <img src="@(DocumentModel.SiemScreenshot.Base64Data ?? $"/{DocumentModel.SiemScreenshot.StorageReference}")" alt="SIEM Access Log Attachment" style="max-width: 100%; height: auto; display: block;" />
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Comparison Summary -->
+        <MudText Typo="Typo.h6" Style="font-weight: bold;">11.Comparison Summary</MudText>
+        @if (string.IsNullOrWhiteSpace(DocumentModel.ComparisonSummary))
+        {
+            @if (hasSpecificChanges)
+            {
+                var totalChangesCount = DocumentModel.ChangeCategories.Where(c => c.HasChanges).SelectMany(c => c.ChangeDetails).Count();
+                if (totalChangesCount == 0) totalChangesCount = DocumentModel.WOReportItems.Count; // fallback
+                var countWord = totalChangesCount switch { 1 => "One", 2 => "Two", 3 => "Three", 4 => "Four", 5 => "Five", 6 => "Six", 7 => "Seven", 8 => "Eight", 9 => "Nine", 10 => "Ten", _ => totalChangesCount.ToString() };
+                string changePlural = totalChangesCount == 1 ? "change was" : "changes were";
+                string unauthorizedChanges = totalChangesCount == 1 ? "change was" : "changes were";
+                <MudText Typo="Typo.body1" Class="mb-6">@countWord @changePlural made to the @DocumentModel.Application System for the month of @monthStr-@DocumentModel.ReportingYear. <strong>No unauthorized @unauthorizedChanges made.</strong></MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body1" Class="mb-6">No change was made to the @DocumentModel.Application System for the month of @monthStr-@DocumentModel.ReportingYear. <strong>No unauthorized change was made.</strong></MudText>
+            }
+        }
+        else
+        {
+            <MudText Typo="Typo.body1" Class="mb-6">@((MarkupString)DocumentModel.ComparisonSummary.Replace("\n", "<br/>"))</MudText>
+        }
+
+        <!-- Approvals -->
+        <MudText Typo="Typo.h6" Style="font-weight: bold;">Verifier/Approval</MudText>
+        <div style="margin-top: 3rem;">
+            <MudText Typo="Typo.body1">------------------------------------</MudText>
+            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierName)) { <MudText Typo="Typo.body1" Style="font-weight: bold;">@(DocumentModel.VerifierName)</MudText> }
+            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierDesignation)) { <MudText Typo="Typo.body1" Style="font-weight: bold;">@(DocumentModel.VerifierDesignation)</MudText> }
+            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierDepartment)) { <MudText Typo="Typo.body1">@(DocumentModel.VerifierDepartment)</MudText> }
+            @if(!string.IsNullOrWhiteSpace(DocumentModel.VerifierOrganization)) { <MudText Typo="Typo.body1">@(DocumentModel.VerifierOrganization)</MudText> }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public CMReviewDocumentViewModel DocumentModel { get; set; } = default!;
+}

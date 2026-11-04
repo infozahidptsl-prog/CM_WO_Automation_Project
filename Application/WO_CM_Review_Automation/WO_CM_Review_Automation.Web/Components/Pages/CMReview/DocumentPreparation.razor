@@ -1,0 +1,420 @@
+@page "/cm-review/document-preparation"
+@page "/cm-review/document-preparation/{DocumentId:guid}"
+@using WO_CM_Review_Automation.Application.ViewModels.CMReview
+@using WO_CM_Review_Automation.Domain.Entities.CMReview
+@inject WO_CM_Review_Automation.Application.Mappings.Interfaces.IMappingService MappingService
+
+
+<PageTitle>CM Review Document Preparation</PageTitle>
+
+<PageTitle>CM Review Document Preparation</PageTitle>
+
+<div class="print-hide">
+    <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
+        <MudText Typo="Typo.h5" Class="mb-6" Style="font-weight: 700; color: var(--color-text-primary); letter-spacing: -0.5px;">CM Review Document Preparation</MudText>
+
+    @if (IsLoading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <MudText>Loading...</MudText>
+    }
+    else
+    {
+        <MudGrid>
+            <!-- Left Column: Data Entry -->
+            <MudItem xs="12" md="6">
+                <EnterpriseCard Class="mb-6">
+                    <div class="ent-card-header">
+                        <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">1. Initial Setup</MudText>
+                    </div>
+                    <div class="ent-p-md">
+                        <MudGrid>
+                            <MudItem xs="4">
+                                <MudSelect T="string" Label="Application" @bind-Value="DocumentModel.Application" Variant="Variant.Outlined" Required="true">
+                                    @foreach (var app in ActiveApplications)
+                                    {
+                                        <MudSelectItem Value="@app">@app</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="4">
+                                <MudSelect T="int" Label="Month" @bind-Value="DocumentModel.ReportingMonth" Variant="Variant.Outlined" Required="true">
+                                    @for (int i = 1; i <= 12; i++)
+                                    {
+                                        var month = i;
+                                        <MudSelectItem Value="@month">@System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(month)</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="4">
+                                <MudSelect T="int" Label="Year" @bind-Value="DocumentModel.ReportingYear" Variant="Variant.Outlined" Required="true">
+                                    @for (int i = DateTime.Now.Year - 1; i <= DateTime.Now.Year + 1; i++)
+                                    {
+                                        var year = i;
+                                        <MudSelectItem Value="@year">@year</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="12" Class="d-flex justify-space-between mt-2">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadDocumentDataAsync">Load Data</MudButton>
+                            </MudItem>
+                        </MudGrid>
+                    </div>
+                    </EnterpriseCard>
+
+                @if (IsDocumentLoaded)
+                {
+                    <!-- Document Info -->
+                    <EnterpriseCard Class="mb-6">
+                        <div class="ent-card-header">
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">2. Document Info</MudText>
+                        </div>
+                        <div class="ent-p-md">
+                            <MudGrid>
+                                <MudItem xs="6">
+                                    <MudTextField @bind-Value="DocumentModel.DocumentVersion" Label="Document Version" Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudTextField @bind-Value="DocumentModel.TemplateVersion" Label="Template Version" Variant="Variant.Outlined" />
+                                </MudItem>
+                            </MudGrid>
+                        </div>
+                    </EnterpriseCard>
+
+                    <EnterpriseCard Class="mb-6">
+                        <div class="ent-card-header">
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">3. Server Evidence</MudText>
+                            <div class="action-buttons">
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="AddServerEvidence">Add Server</MudButton>
+                            </div>
+                        </div>
+                        <div class="ent-p-md">
+                            @foreach (var server in DocumentModel.ServerEvidences)
+                            {
+                                <EnterpriseCard Class="ent-p-md mb-4" Style="background-color: var(--color-bg-surface-secondary)">
+                                    <MudGrid>
+                                        <MudItem xs="5">
+                                            <MudTextField @bind-Value="server.ServerIp" Label="Server IP" Variant="Variant.Outlined" />
+                                        </MudItem>
+                                        <MudItem xs="5">
+                                            <MudTextField @bind-Value="server.ServerName" Label="Server Name" Variant="Variant.Outlined" />
+                                        </MudItem>
+                                        <MudItem xs="2" Class="d-flex align-center">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveServerEvidence(server))" />
+                                        </MudItem>
+                                        
+                                        <MudItem xs="12">
+                                            <MudText Typo="Typo.subtitle2">Screenshots</MudText>
+                                            <div id="@($"paste-area-{server.Id}")" 
+                                                 tabindex="0" 
+                                                 contenteditable="true"
+                                                 onkeydown="return false;"
+                                                 class="ent-paste-zone pa-4 mb-2"
+                                                 @onfocus="@(async () => await InitializeClipboardAsync(server.Id))">
+                                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                    Click here and press <strong>Ctrl+V</strong> to paste a screenshot, or click the button below to upload.
+                                                </MudText>
+                                            </div>
+                                            
+                                            <MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".png, .jpg, .jpeg" MaximumFileCount="100" OnFilesChanged="@(e => UploadScreenshotsAsync(e, server.Id))">
+                                                <ActivatorContent>
+                                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                                        Upload Image
+                                                    </MudButton>
+                                                </ActivatorContent>
+                                            </MudFileUpload>
+
+                                            <MudGrid Class="mt-2">
+                                                @foreach (var shot in server.Screenshots)
+                                                {
+                                                    <MudItem xs="4">
+                                                        <MudCard Elevation="2">
+                                                            <MudCardMedia Image="@(shot.Base64Data ?? $"/{shot.StorageReference}")" Height="150" />
+                                                            <MudCardContent Class="pa-2">
+                                                                <MudTextField @bind-Value="shot.Caption" Label="Caption" Margin="Margin.Dense" />
+                                                            </MudCardContent>
+                                                            <MudCardActions Class="pa-1 d-flex justify-end">
+                                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveScreenshot(server, shot))" />
+                                                            </MudCardActions>
+                                                        </MudCard>
+                                                    </MudItem>
+                                                }
+                                            </MudGrid>
+                                        </MudItem>
+                                    </MudGrid>
+                                </EnterpriseCard>
+                            }
+                        </div>
+                    </EnterpriseCard>
+
+                    <EnterpriseCard Class="mb-6">
+                        <div class="ent-card-header">
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">4. Change Categories</MudText>
+                            <div class="action-buttons">
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="AddChangeCategory">Add Category</MudButton>
+                            </div>
+                        </div>
+                        <div class="ent-p-md">
+                            @foreach (var category in DocumentModel.ChangeCategories)
+                            {
+                                <EnterpriseCard Class="ent-p-md mb-4" Style="background-color: var(--color-bg-surface-secondary)">
+                                    <MudGrid>
+                                        <MudItem xs="8">
+                                            <MudTextField @bind-Value="category.CategoryName" Label="Category Name" Variant="Variant.Outlined" />
+                                        </MudItem>
+                                        <MudItem xs="2" Class="d-flex align-center">
+                                            <MudSwitch @bind-Value="category.HasChanges" Color="Color.Primary" Label="Changes?" />
+                                        </MudItem>
+                                        <MudItem xs="2" Class="d-flex align-center">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveChangeCategory(category))" />
+                                        </MudItem>
+                                        @if (category.HasChanges)
+                                        {
+                                            <MudItem xs="12">
+                                                <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="@(() => AddChangeDetail(category))">Add Detail</MudButton>
+                                                @foreach (var detail in category.ChangeDetails)
+                                                {
+                                                    <MudGrid Class="mt-2 pl-4" Style="border-left: 2px solid var(--color-border-standard);">
+                                                        <MudItem xs="2">
+                                                            <MudTextField @bind-Value="detail.ChangeOrder" Label="Change Order" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                                        </MudItem>
+                                                        <MudItem xs="3" Class="d-flex align-center">
+                                                            @if (!string.IsNullOrWhiteSpace(detail.ChangeType))
+                                                            {
+                                                                <MudChip T="string" Color="@(detail.ChangeType.Contains("Standard", StringComparison.OrdinalIgnoreCase) ? Color.Success : Color.Warning)" Size="Size.Small" Class="mr-2">@detail.ChangeType</MudChip>
+                                                            }
+                                                            <MudTextField @bind-Value="detail.ChangeType" Label="Change Type" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                                        </MudItem>
+                                                        <MudItem xs="4">
+                                                            <MudTextField @bind-Value="detail.Description" Label="Description" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                                        </MudItem>
+                                                        <MudItem xs="2">
+                                                            <MudTextField T="string" Value="@(detail.ScheduleDate?.ToString("dd-MM-yyyy hh:mm:ss tt"))" ValueChanged="@(s => { if (DateTimeOffset.TryParse(s, out var dt)) detail.ScheduleDate = dt; else detail.ScheduleDate = null; })" Label="Exec End Date" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                                        </MudItem>
+                                                        <MudItem xs="1" Class="d-flex align-center">
+                                                            <MudIconButton Icon="@Icons.Material.Filled.RemoveCircle" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveChangeDetail(category, detail))" />
+                                                        </MudItem>
+
+                                                        @if (!category.CategoryName.Contains("Standard", StringComparison.OrdinalIgnoreCase) && !(detail.ChangeType ?? "").Contains("Standard", StringComparison.OrdinalIgnoreCase))
+                                                        {
+                                                            <!-- Deployment Screenshots for this Detail -->
+                                                            <MudItem xs="12">
+                                                                <MudText Typo="Typo.subtitle2">Deployment Screenshots</MudText>
+                                                                <div id="@($"paste-area-{detail.Id}")" 
+                                                                     tabindex="0" 
+                                                                     contenteditable="true"
+                                                                     onkeydown="return false;"
+                                                                     class="ent-paste-zone pa-4 mb-2"
+                                                                     @onfocus="@(async () => await InitializeClipboardAsync(detail.Id))">
+                                                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                                        Click here and press <strong>Ctrl+V</strong> to paste a screenshot for this specific change.
+                                                                    </MudText>
+                                                                </div>
+                                                                
+                                                                <MudFileUpload T="IReadOnlyList<IBrowserFile>" Accept=".png, .jpg, .jpeg, .docx" MaximumFileCount="100" OnFilesChanged="@(e => UploadDeploymentScreenshotsAsync(e, detail.Id))">
+                                                                    <ActivatorContent>
+                                                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                                                            Upload Deployment Image / Docx
+                                                                        </MudButton>
+                                                                    </ActivatorContent>
+                                                                </MudFileUpload>
+
+                                                                <MudGrid Class="mt-2">
+                                                                    @foreach (var shot in detail.DeploymentScreenshots)
+                                                                    {
+                                                                        <MudItem xs="4">
+                                                                            <MudCard Elevation="2">
+                                                                                <MudCardMedia Image="@(shot.Base64Data ?? $"/{shot.StorageReference}")" Height="150" />
+                                                                                <MudCardContent Class="pa-2">
+                                                                                    <MudTextField @bind-Value="shot.Caption" Label="Caption" Margin="Margin.Dense" />
+                                                                                </MudCardContent>
+                                                                                <MudCardActions Class="pa-1 d-flex justify-end">
+                                                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveDeploymentScreenshot(detail, shot))" />
+                                                                                </MudCardActions>
+                                                                            </MudCard>
+                                                                        </MudItem>
+                                                                    }
+                                                                </MudGrid>
+                                                            </MudItem>
+                                                        }
+                                                    </MudGrid>
+                                                }
+                                            </MudItem>
+                                        }
+                                    </MudGrid>
+                                </EnterpriseCard>
+                            }
+                        </div>
+                    </EnterpriseCard>
+
+                    <EnterpriseCard Class="mb-6">
+                        <div class="ent-card-header">
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">5. WO Report Items</MudText>
+                            <div class="action-buttons">
+                                <MudChip T="string" Color="Color.Info">Total: @DocumentModel.WOReportItems.Count</MudChip>
+                            </div>
+                        </div>
+                        <div class="ent-p-md">
+                            <MudTable Items="DocumentModel.WOReportItems" Dense="true" Hover="true">
+                                <HeaderContent>
+                                    <MudTh>WO ID</MudTh>
+                                    <MudTh>Status</MudTh>
+                                    <MudTh>Assignee</MudTh>
+                                    <MudTh>Exec Start</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd DataLabel="WO ID">@context.WoId</MudTd>
+                                    <MudTd DataLabel="Status">@context.Status</MudTd>
+                                    <MudTd DataLabel="Assignee">@context.Assignee</MudTd>
+                                    <MudTd DataLabel="Exec Start">@context.ExecutionStart</MudTd>
+                                </RowTemplate>
+                            </MudTable>
+
+                            <MudDivider Class="my-4" />
+                            <MudText Typo="Typo.subtitle1">Summary Table Dump Screenshot (Optional)</MudText>
+                            <div id="paste-area-summary" 
+                                 tabindex="0" 
+                                 contenteditable="true"
+                                 onkeydown="return false;"
+                                 class="ent-paste-zone pa-4 mb-2 mt-2"
+                                 @onfocus="@(async () => await InitializeSummaryClipboardAsync())">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    Click here and press <strong>Ctrl+V</strong> to paste the Summary Table screenshot, or upload below.
+                                </MudText>
+                            </div>
+                            
+                            <MudFileUpload T="IBrowserFile" Accept=".png, .jpg, .jpeg" OnFilesChanged="@(e => UploadSummaryScreenshotAsync(e))">
+                                <ActivatorContent>
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                        Upload Summary Image
+                                    </MudButton>
+                                </ActivatorContent>
+                            </MudFileUpload>
+
+                            @if (DocumentModel.SummaryTableScreenshot != null)
+                            {
+                                <MudCard Elevation="2" Class="mt-3" Style="max-width: 400px;">
+                                    <MudCardMedia Image="@(DocumentModel.SummaryTableScreenshot.Base64Data ?? $"/{DocumentModel.SummaryTableScreenshot.StorageReference}")" Height="200" />
+                                    <MudCardActions Class="pa-1 d-flex justify-end">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="RemoveSummaryScreenshot" />
+                                    </MudCardActions>
+                                </MudCard>
+                            }
+
+                            <MudDivider Class="my-4" />
+                            <MudText Typo="Typo.subtitle1">Excel Screenshot (Optional - Figure 2)</MudText>
+                            <div id="paste-area-excel" 
+                                 tabindex="0" 
+                                 contenteditable="true"
+                                 onkeydown="return false;"
+                                 class="ent-paste-zone pa-4 mb-2 mt-2"
+                                 @onfocus="@(async () => await InitializeExcelClipboardAsync())">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    Click here and press <strong>Ctrl+V</strong> to paste the Excel screenshot, or upload below.
+                                </MudText>
+                            </div>
+                            
+                            <MudFileUpload T="IBrowserFile" Accept=".png, .jpg, .jpeg, .docx" OnFilesChanged="@(e => UploadExcelScreenshotAsync(e))">
+                                <ActivatorContent>
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                        Upload Excel Screenshot
+                                    </MudButton>
+                                </ActivatorContent>
+                            </MudFileUpload>
+
+                            @if (DocumentModel.ExcelScreenshot != null)
+                            {
+                                <MudCard Elevation="2" Class="mt-3" Style="max-width: 400px;">
+                                    <MudCardMedia Image="@(DocumentModel.ExcelScreenshot.Base64Data ?? $"/{DocumentModel.ExcelScreenshot.StorageReference}")" Height="200" />
+                                    <MudCardActions Class="pa-1 d-flex justify-end">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="RemoveExcelScreenshot" />
+                                    </MudCardActions>
+                                </MudCard>
+                            }
+
+                            @if (DocumentModel.Application == "POS")
+                            {
+                                <MudDivider Class="my-4" />
+                                <MudText Typo="Typo.subtitle1">SIEM Access Log Attachment (POS Only)</MudText>
+                                <div id="paste-area-siem" 
+                                     tabindex="0" 
+                                     contenteditable="true"
+                                     onkeydown="return false;"
+                                     class="ent-paste-zone pa-4 mb-2 mt-2"
+                                     @onfocus="@(async () => await InitializeSiemClipboardAsync())">
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        Click here and press <strong>Ctrl+V</strong> to paste the SIEM screenshot, or upload below.
+                                    </MudText>
+                                </div>
+                                
+                                <MudFileUpload T="IBrowserFile" Accept=".png, .jpg, .jpeg, .xlsb, .xlsx, .csv" OnFilesChanged="@(e => UploadSiemScreenshotAsync(e))">
+                                    <ActivatorContent>
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload">
+                                            Upload SIEM Attachment
+                                        </MudButton>
+                                    </ActivatorContent>
+                                </MudFileUpload>
+
+                                @if (DocumentModel.SiemScreenshot != null)
+                                {
+                                    <MudCard Elevation="2" Class="mt-3" Style="max-width: 400px;">
+                                        @if (!string.IsNullOrEmpty(DocumentModel.SiemScreenshot.FileName) && (DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsb", StringComparison.OrdinalIgnoreCase) || DocumentModel.SiemScreenshot.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) || DocumentModel.SiemScreenshot.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)))
+                                        {
+                                            <MudCardContent>
+                                                <MudText Typo="Typo.body2" Color="Color.Primary"><MudIcon Icon="@Icons.Material.Filled.AttachFile" Class="mr-1" />@DocumentModel.SiemScreenshot.FileName</MudText>
+                                            </MudCardContent>
+                                        }
+                                        else
+                                        {
+                                            <MudCardMedia Image="@(DocumentModel.SiemScreenshot.Base64Data ?? $"/{DocumentModel.SiemScreenshot.StorageReference}")" Height="200" />
+                                        }
+                                        <MudCardActions Class="pa-1 d-flex justify-end">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="RemoveSiemScreenshot" />
+                                        </MudCardActions>
+                                    </MudCard>
+                                }
+                            }
+                        </div>
+                    </EnterpriseCard>
+
+                    <EnterpriseCard Class="mb-6">
+                        <div class="ent-p-md">
+                            <MudGrid>
+                                <MudItem xs="12" Class="d-flex justify-end gap-2">
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveDraftAsync">Save Draft</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="FinalizeDocumentAsync">Finalize</MudButton>
+                                </MudItem>
+                            </MudGrid>
+                        </div>
+                    </EnterpriseCard>
+                }
+            </MudItem>
+
+            <!-- Right Column: Live Preview -->
+            <MudItem xs="12" md="6">
+                <EnterpriseCard Class="h-100 d-flex flex-column surface-3">
+                    <div class="ent-card-header d-flex justify-space-between align-center" Style="background-color: var(--color-bg-surface-secondary);">
+                        <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">Live Preview</MudText>
+                        @if (IsDocumentLoaded)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportDocumentAsync">Export to DOCX</MudButton>
+                        }
+                    </div>
+                    <div class="ent-p-md flex-grow-1" style="overflow-y: auto; background-color: var(--color-bg-preview);">
+                        @if (IsDocumentLoaded)
+                        {
+                            <LivePreview DocumentModel="DocumentModel" />
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary" Align="Align.Center">Load a document to preview.</MudText>
+                        }
+                    </div>
+                </EnterpriseCard>
+            </MudItem>
+        </MudGrid>
+    }
+    </MudContainer>
+</div>
+
+

@@ -1,0 +1,99 @@
+@page "/reports"
+@using WO_CM_Review_Automation.Domain.Entities
+@using WO_CM_Review_Automation.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@using WO_CM_Review_Automation.Web.Components.Shared
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+
+<PageTitle>Monthly Reports - WO CM Review</PageTitle>
+
+<EnterprisePageHeader Title="Monthly Reports" Subtitle="View all uploaded monthly reports" />
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (!_uploads.Any())
+{
+    <EnterpriseEmptyState 
+        Icon="@Icons.Material.Filled.Assessment" 
+        Title="No Reports Found" 
+        Description="There are currently no uploaded reports available to display." />
+}
+else
+{
+    <EnterpriseCard Class="ent-p-md mb-4 d-flex align-center">
+        <MudIcon Icon="@Icons.Material.Filled.Search" Color="Color.Default" Class="mr-3" />
+        <MudTextField @bind-Value="_searchString" Placeholder="Search reports by file name..." Variant="Variant.Text" Underline="false" Class="mt-0" Clearable="true"></MudTextField>
+    </EnterpriseCard>
+
+    <MudTable Items="@_uploads" Hover="true" Breakpoint="Breakpoint.Sm" Class="ent-table" Filter="new Func<UploadHistory,bool>(FilterFunc1)">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<UploadHistory, object>(x=>x.UploadDate)">Upload Date</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UploadHistory, object>(x=>x.FileName)">File Name</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UploadHistory, object>(x=>x.TotalRows)">Total Rows</MudTableSortLabel></MudTh>
+            <MudTh Style="text-align:right">Action</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Upload Date">
+                <MudText Typo="Typo.body2">@context.UploadDate.ToString("MMM dd, yyyy")</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.UploadDate.ToString("hh:mm tt")</MudText>
+            </MudTd>
+            <MudTd DataLabel="File Name">
+                <div class="d-flex align-center">
+                    <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small" Class="mr-3">
+                        <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" />
+                    </MudAvatar>
+                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.FileName</MudText>
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Total Rows">
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">@context.TotalRows.ToString("N0") rows</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Action" Style="text-align:right">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Visibility" OnClick="@(() => ViewReport(context.Id))">View Report</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    private List<UploadHistory> _uploads = new();
+    private bool _isLoading = true;
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            _uploads = await DbContext.UploadHistories
+                .OrderByDescending(u => u.UploadDate)
+                .ToListAsync();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ViewReport(Guid uploadId)
+    {
+        NavigationManager.NavigateTo($"/report/{uploadId}");
+    }
+
+    private bool FilterFunc1(UploadHistory element) => FilterFunc(element, _searchString);
+
+    private bool FilterFunc(UploadHistory element, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (element.FileName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+}

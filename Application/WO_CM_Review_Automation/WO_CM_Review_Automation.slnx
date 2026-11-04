@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="WO_CM_Review_Automation.Application/WO_CM_Review_Automation.Application.csproj" />
+  <Project Path="WO_CM_Review_Automation.Domain/WO_CM_Review_Automation.Domain.csproj" />
+  <Project Path="WO_CM_Review_Automation.Infrastructure/WO_CM_Review_Automation.Infrastructure.csproj" />
+  <Project Path="WO_CM_Review_Automation.Tests/WO_CM_Review_Automation.Tests.csproj" />
+  <Project Path="WO_CM_Review_Automation.Web/WO_CM_Review_Automation.Web.csproj" />
+</Solution>

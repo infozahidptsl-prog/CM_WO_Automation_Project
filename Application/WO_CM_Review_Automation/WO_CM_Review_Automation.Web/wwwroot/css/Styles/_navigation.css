@@ -1,0 +1,10 @@
+.ent-drawer { border-right: 1px solid var(--color-border-subtle) !important; background-color: var(--color-bg-sidebar) !important; transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1); } 
+.ent-drawer .mud-drawer-header { padding-left: 24px; padding-right: 24px; }
+.ent-nav-item .mud-nav-link { margin: 2px 16px; border-radius: var(--radius-md); color: var(--color-text-secondary) !important; transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1); padding: 8px 16px; position: relative; } 
+.ent-nav-item .mud-nav-link.active { background-color: var(--color-surface-accent) !important; color: var(--color-accent-teal) !important; font-weight: 600; box-shadow: var(--shadow-accent); } 
+.ent-nav-item .mud-nav-link.active::before { content: ''; position: absolute; left: -8px; top: 20%; height: 60%; width: 4px; border-radius: 4px; background-color: var(--color-accent-teal); }
+.ent-nav-item .mud-nav-link.active .mud-icon-root { color: var(--color-accent-teal) !important; } 
+.ent-nav-item .mud-nav-link:hover:not(.active) { background-color: var(--color-bg-surface) !important; transform: translateX(2px); color: var(--color-text-primary) !important; }
+.ent-nav-item .mud-nav-link:hover:not(.active) .mud-icon-root { color: var(--color-text-primary) !important; }
+.ent-nav-group .mud-nav-group-button { margin: 2px 16px; border-radius: var(--radius-md); color: var(--color-text-secondary) !important; padding: 8px 16px; transition: all 200ms ease; }
+.ent-nav-group .mud-nav-group-button:hover { background-color: var(--color-bg-surface) !important; color: var(--color-text-primary) !important; }

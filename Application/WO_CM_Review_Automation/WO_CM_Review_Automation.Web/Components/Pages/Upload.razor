@@ -1,0 +1,232 @@
+@page "/upload"
+@using WO_CM_Review_Automation.Application.ExcelImport
+@using WO_CM_Review_Automation.Application.Import.Models
+@using System.IO
+@inject IExcelImportService ExcelImportService
+@inject ISnackbar Snackbar
+
+<PageTitle>Upload Work Orders - WO CM Review</PageTitle>
+
+<EnterprisePageHeader Title="Upload Data" Subtitle="Import raw Work Order data from Enterprise system" />
+
+@if (_currentStep == Step.Upload)
+{
+    <EnterpriseCard Class="ent-p-lg d-flex flex-column align-center w-100">
+        <EnterpriseUploadZone Accept=".xlsx, .csv" HelperText="Supported formats: Excel (.xlsx) and CSV (.csv). Max size: 100MB." @bind-SelectedFile="_file" />
+        
+        <div class="d-flex justify-center mt-8">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" Disabled="@(_file == null || _isProcessing)" OnClick="GeneratePreview" Style="width: 250px; height: 48px;">
+                @if (_isProcessing)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" Color="Color.Inherit" />
+                    <MudText Class="ms-2 font-weight-bold">Reading File...</MudText>
+                }
+                else
+                {
+                    <MudText Class="font-weight-bold">Generate Preview</MudText>
+                }
+            </MudButton>
+        </div>
+    </EnterpriseCard>
+}
+else if (_currentStep == Step.Preview && _previewResult != null)
+{
+    <!-- Session Summary Checklist -->
+    <MudGrid Spacing="3" Class="mb-6">
+        <MudItem xs="12" sm="4">
+            <EnterpriseStatCard Title="WORKBOOK DETECTED" Value="@(string.IsNullOrWhiteSpace(_previewResult.WorkbookName) ? _previewResult.FileName : _previewResult.WorkbookName)" SubText="@($"{_previewResult.Diagnostics.TotalWorksheets} sheets found")" AccentColor="Color.Primary" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <EnterpriseStatCard Title="WORKSHEET SELECTED" Value="@(string.IsNullOrWhiteSpace(_previewResult.WorksheetName) ? "None" : _previewResult.WorksheetName)" SubText="@($"Header at row {_previewResult.HeaderRow}")" AccentColor="Color.Info" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <EnterpriseStatCard Title="HEADER CONFIDENCE" Value="@($"{_previewResult.Diagnostics.HeaderConfidence:P0}")" SubText="@($"Detected in {_previewResult.ProcessingTimeMs}ms")" AccentColor="Color.Success" />
+        </MudItem>
+        
+        <MudItem xs="12" sm="3">
+            <EnterpriseStatCard Title="TOTAL ROWS" Value="@_previewResult.TotalRows.ToString()" SubText="Found in Excel" AccentColor="Color.Primary" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <EnterpriseStatCard Title="VALID ROWS" Value="@_previewResult.ValidRows.ToString()" SubText="Ready for import" AccentColor="Color.Success" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <EnterpriseStatCard Title="DUPLICATES" Value="@_previewResult.DuplicateRows.ToString()" SubText="Will be skipped" AccentColor="Color.Warning" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <EnterpriseStatCard Title="INVALID ROWS" Value="@_previewResult.InvalidRows.ToString()" SubText="Cannot be imported" AccentColor="Color.Error" />
+        </MudItem>
+    </MudGrid>
+
+    @if (_previewResult.Diagnostics.HasCriticalErrors)
+    {
+        <EnterpriseCard Class="ent-p-md mb-6" Style="border-left: 4px solid var(--color-error); background-color: rgba(220, 38, 38, 0.05);">
+            <div class="d-flex align-start">
+                <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Class="mr-3 mt-1" />
+                <div>
+                    <MudText Typo="Typo.subtitle1" Class="font-weight-bold" Color="Color.Error">Validation Failed - Critical Errors</MudText>
+                    @foreach (var err in _previewResult.Diagnostics.WarningsAndErrors.Where(e => e.Level == WO_CM_Review_Automation.Application.Import.Models.ValidationLevel.Critical))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Error">@err.Message</MudText>
+                    }
+                </div>
+            </div>
+        </EnterpriseCard>
+
+        <div class="d-flex justify-start mt-6">
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="ent-btn" OnClick="CancelImport">Go Back</MudButton>
+        </div>
+    }
+    else
+    {
+        <!-- Mapping Report -->
+        <EnterpriseCard Class="mb-6 d-flex flex-column" Style="height: 400px;">
+            <EnterpriseDataGrid T="WO_CM_Review_Automation.Application.Import.Models.ColumnMappingResult" Items="@_previewResult.Diagnostics.MappingTable" Title="Column Mapping Report" Height="100%">
+                <Columns>
+                    <PropertyColumn T="WO_CM_Review_Automation.Application.Import.Models.ColumnMappingResult" TProperty="string" Property="x => x.RawHeader" Title="Raw Header (Excel)" />
+                    <PropertyColumn T="WO_CM_Review_Automation.Application.Import.Models.ColumnMappingResult" TProperty="string" Property="x => x.CanonicalHeader" Title="Canonical Name (System)" />
+                    <TemplateColumn T="WO_CM_Review_Automation.Application.Import.Models.ColumnMappingResult" Title="Match Status" HeaderStyle="width: 150px;">
+                        <CellTemplate>
+                            @if (context.Item.MatchStatus == "Matched")
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small" Variant="Variant.Filled">✓ Matched</MudChip>
+                            }
+                            else if (context.Item.MatchStatus == "Alias Match")
+                            {
+                                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled">⚠ Alias Match</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Default" Size="Size.Small" Variant="Variant.Outlined">? Unused</MudChip>
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </EnterpriseDataGrid>
+        </EnterpriseCard>
+
+        <!-- Warning Table if any -->
+        @if (_previewResult.Diagnostics.WarningsAndErrors.Any())
+        {
+            <EnterpriseCard Class="mb-6 d-flex flex-column" Style="height: 250px;">
+                <EnterpriseDataGrid T="WO_CM_Review_Automation.Application.Import.Models.ValidationMessage" Items="@_previewResult.Diagnostics.WarningsAndErrors" Title="Validation Warnings" Height="100%">
+                    <Columns>
+                        <PropertyColumn T="WO_CM_Review_Automation.Application.Import.Models.ValidationMessage" TProperty="int?" Property="x => x.RowIndex" Title="Row" HeaderStyle="width: 80px;" />
+                        <PropertyColumn T="WO_CM_Review_Automation.Application.Import.Models.ValidationMessage" TProperty="string" Property="x => x.ColumnName" Title="Column" HeaderStyle="width: 120px;" />
+                        <PropertyColumn T="WO_CM_Review_Automation.Application.Import.Models.ValidationMessage" TProperty="string" Property="x => x.Message" Title="Message" />
+                    </Columns>
+                </EnterpriseDataGrid>
+            </EnterpriseCard>
+        }
+
+        <div class="d-flex justify-end mt-6 ent-gap-md">
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="ent-btn" OnClick="CancelImport" Disabled="_isSaving">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" OnClick="ConfirmImport" Disabled="@_isSaving">
+                @if (_isSaving)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" Color="Color.Inherit" />
+                    <MudText Class="ms-2 font-weight-bold">Importing...</MudText>
+                }
+                else
+                {
+                    <MudText Class="font-weight-bold">Confirm Import</MudText>
+                }
+            </MudButton>
+        </div>
+    }
+}
+else if (_currentStep == Step.Summary && _summaryResult != null)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+        <EnterpriseCard Class="ent-p-lg text-center d-flex flex-column align-center">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Style="font-size: 80px;" Class="mb-4 ent-fade-in" />
+            <MudText Typo="Typo.h4" Class="ent-text-h1 mb-2">Import Successful</MudText>
+            <MudText Typo="Typo.body1" Class="mb-6 ent-text-subtitle">Your Excel file has been fully processed and stored in the database.</MudText>
+            
+            <div class="w-100 mb-8">
+                <EnterpriseDataGrid T="dynamic" Items="@(new List<dynamic>())" Style="border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+                    <ToolBarContent>
+                        <MudGrid Spacing="2" Class="pa-4 w-100 text-left">
+                            <MudItem xs="6"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">File Name</MudText></MudItem>
+                            <MudItem xs="6" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold">@_summaryResult.FileName</MudText></MudItem>
+                            <MudItem xs="12"><MudDivider /></MudItem>
+                            <MudItem xs="6"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">Imported Records</MudText></MudItem>
+                            <MudItem xs="6" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold" Style="color: var(--color-success);">@_summaryResult.ImportedRecords</MudText></MudItem>
+                            <MudItem xs="12"><MudDivider /></MudItem>
+                            <MudItem xs="6"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">Processing Time</MudText></MudItem>
+                            <MudItem xs="6" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold">@_summaryResult.ProcessingTime.TotalSeconds.ToString("F2")s</MudText></MudItem>
+                        </MudGrid>
+                    </ToolBarContent>
+                </EnterpriseDataGrid>
+            </div>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Href="/" Class="ent-btn">View Dashboard</MudButton>
+        </EnterpriseCard>
+    </MudContainer>
+}
+
+@code {
+    private enum Step { Upload, Preview, Summary }
+    private Step _currentStep = Step.Upload;
+    
+    private IBrowserFile? _file;
+    private bool _isProcessing;
+    private bool _isSaving;
+    private ImportSession? _previewResult;
+    private ImportSummaryResult? _summaryResult;
+
+    private async Task GeneratePreview()
+    {
+        if (_file == null) return;
+
+        _isProcessing = true;
+        try
+        {
+            using var stream = new MemoryStream();
+            await _file.OpenReadStream(maxAllowedSize: 104857600).CopyToAsync(stream);
+            stream.Position = 0;
+
+            _previewResult = await ExcelImportService.GeneratePreviewAsync(stream, _file.Name, "Administrator");
+            _currentStep = Step.Preview;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private void CancelImport()
+    {
+        if (_previewResult != null)
+        {
+            ExcelImportService.DiscardPreview(_previewResult.SessionId);
+        }
+        _currentStep = Step.Upload;
+        _file = null;
+        _previewResult = null;
+    }
+
+    private async Task ConfirmImport()
+    {
+        if (_previewResult == null) return;
+        
+        _isSaving = true;
+        try
+        {
+            _summaryResult = await ExcelImportService.ConfirmImportAsync(_previewResult.SessionId);
+            _currentStep = Step.Summary;
+            Snackbar.Add("Import successful!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Import failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

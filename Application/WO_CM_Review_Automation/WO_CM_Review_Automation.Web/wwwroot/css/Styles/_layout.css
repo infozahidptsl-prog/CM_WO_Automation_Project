@@ -1,0 +1,1 @@
+.ent-appbar { background-color: var(--color-bg-surface) !important; border-bottom: 1px solid var(--color-border) !important; height: 64px !important; color: var(--color-text-primary) !important; } .ent-main-content { background-color: var(--color-bg-app); min-height: 100vh; padding-top: 64px; } .ent-page-header { margin-bottom: var(--spacing-lg); }

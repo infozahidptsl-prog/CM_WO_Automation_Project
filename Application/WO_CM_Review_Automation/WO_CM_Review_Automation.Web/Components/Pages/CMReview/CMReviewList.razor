@@ -1,0 +1,91 @@
+@page "/cm-reviews"
+@using WO_CM_Review_Automation.Domain.Entities.CMReview
+@using WO_CM_Review_Automation.Application.Interfaces
+@using WO_CM_Review_Automation.Web.Components.Shared
+@inject ICMReviewDocumentService DocumentService
+@inject NavigationManager NavigationManager
+
+<PageTitle>CM Review Documents</PageTitle>
+
+<EnterprisePageHeader Title="CM Review Documents" Subtitle="View all CM Review drafts and finalized documents" />
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (!_documents.Any())
+{
+    <EnterpriseEmptyState 
+        Icon="@Icons.Material.Filled.DocumentScanner" 
+        Title="No Documents Found" 
+        Description="There are currently no CM Review documents available to display." />
+}
+else
+{
+    <MudTable Items="@_documents" Hover="true" Breakpoint="Breakpoint.Sm" Elevation="1" Class="ent-table">
+        <HeaderContent>
+            <MudTh>Application</MudTh>
+            <MudTh>Period</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Version</MudTh>
+            <MudTh>Created Date</MudTh>
+            <MudTh>Action</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Application">@context.Application</MudTd>
+            <MudTd DataLabel="Period">@GetMonthName(context.ReportingMonth) @context.ReportingYear</MudTd>
+            <MudTd DataLabel="Status">
+                @if (context.Status == CMReviewDocumentStatus.Finalized)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Finalized</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">Draft</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Version">@context.DocumentVersion</MudTd>
+            <MudTd DataLabel="Created Date">@context.CreatedDate.ToString("MMM dd, yyyy")</MudTd>
+            <MudTd DataLabel="Action">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenDocument(context.Id))">
+                    @(context.Status == CMReviewDocumentStatus.Finalized ? "View" : "Edit / Prepare")
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    private List<CMReviewDocument> _documents = new();
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            _documents = await DocumentService.GetAllDocumentsAsync();
+            _documents = _documents.OrderByDescending(d => d.ReportingYear)
+                                   .ThenByDescending(d => d.ReportingMonth)
+                                   .ToList();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OpenDocument(Guid documentId)
+    {
+        NavigationManager.NavigateTo($"/cm-review/document-preparation/{documentId}");
+    }
+
+    private string GetMonthName(int monthNumber)
+    {
+        if (monthNumber < 1 || monthNumber > 12) return monthNumber.ToString();
+        return new DateTime(2000, monthNumber, 1).ToString("MMMM");
+    }
+}

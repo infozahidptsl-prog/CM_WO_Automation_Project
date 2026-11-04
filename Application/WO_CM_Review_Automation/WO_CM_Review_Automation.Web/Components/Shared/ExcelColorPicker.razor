@@ -1,0 +1,165 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+
+<div id="@_buttonId"
+     style="display: inline-flex; align-items: center; border: 1px solid #d4d4d4; padding: 2px 3px; cursor: pointer; background-color: white; border-radius: 4px; height: 24px; width: 40px; justify-content: center; vertical-align: middle; user-select: none;"
+     title="Fill Color"
+     @onclick="ToggleMenu"
+     @onclick:stopPropagation="true">
+    <div style="width: 14px; height: 14px; background-color: @(Value ?? "#ffffff"); border: 1px solid #a0a0a0; flex-shrink: 0;"></div>
+    <span style="font-size: 9px; color: #666; margin-left: 2px; line-height: 1;">▼</span>
+</div>
+
+@if (_isOpen)
+{
+    <!-- Backdrop to close on outside click -->
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 8998;"
+         @onclick="CloseMenu"
+         @onclick:stopPropagation="true">
+    </div>
+
+    <!-- Color picker panel anchored below the button -->
+    <div style="position: fixed; top: @(_menuTop)px; left: @(_menuLeft)px; z-index: 8999;
+                background-color: #f3f2f1; border: 1px solid #c8c6c4; padding: 12px;
+                width: 212px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"
+         @onclick:stopPropagation="true">
+
+        <div style="font-size: 11px; margin-bottom: 6px; color: #323130; font-weight: 600;">Theme Colors</div>
+        <div style="display: grid; grid-template-columns: repeat(10, 18px); gap: 2px; margin-bottom: 2px;">
+            @foreach (var color in ThemeColors)
+            {
+                var c = color;
+                <div style="width: 18px; height: 18px; background-color: @c; border: 1px solid #c8c6c4; cursor: pointer; box-sizing: border-box;"
+                     title="@c"
+                     @onclick="() => SelectColor(c)"
+                     @onclick:stopPropagation="true"
+                     onmouseover="this.style.outline='2px solid #0078d4'"
+                     onmouseout="this.style.outline='none'">
+                </div>
+            }
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(10, 18px); gap: 2px; margin-bottom: 10px;">
+            @foreach (var shadeGroup in ThemeShades)
+            {
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                    @foreach (var color in shadeGroup)
+                    {
+                        var c = color;
+                        <div style="width: 18px; height: 18px; background-color: @c; border: 1px solid transparent; cursor: pointer; box-sizing: border-box;"
+                             title="@c"
+                             @onclick="() => SelectColor(c)"
+                             @onclick:stopPropagation="true"
+                             onmouseover="this.style.outline='2px solid #0078d4'"
+                             onmouseout="this.style.outline='none'">
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div style="font-size: 11px; margin-bottom: 6px; color: #323130; font-weight: 600;">Standard Colors</div>
+        <div style="display: grid; grid-template-columns: repeat(10, 18px); gap: 2px; margin-bottom: 10px;">
+            @foreach (var color in StandardColors)
+            {
+                var c = color;
+                <div style="width: 18px; height: 18px; background-color: @c; border: 1px solid #c8c6c4; cursor: pointer; box-sizing: border-box;"
+                     title="@c"
+                     @onclick="() => SelectColor(c)"
+                     @onclick:stopPropagation="true"
+                     onmouseover="this.style.outline='2px solid #0078d4'"
+                     onmouseout="this.style.outline='none'">
+                </div>
+            }
+        </div>
+
+        <div style="border-top: 1px solid #c8c6c4; padding-top: 6px;">
+            <div style="display: flex; align-items: center; padding: 4px 2px; cursor: pointer; border-radius: 2px;"
+                 @onclick='() => SelectColor(null)'
+                 @onclick:stopPropagation="true"
+                 onmouseover="this.style.backgroundColor='#e1dfdd'"
+                 onmouseout="this.style.backgroundColor='transparent'">
+                <div style="width: 18px; height: 18px; border: 1px solid #c8c6c4; background: linear-gradient(to bottom right, white 45%, red 45%, red 55%, white 55%); margin-right: 8px; flex-shrink: 0;"></div>
+                <span style="font-size: 12px; color: #323130;">No Color</span>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _buttonId = $"colorpicker-{Guid.NewGuid():N}";
+    private bool _isOpen;
+    private double _menuTop;
+    private double _menuLeft;
+
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    private async Task ToggleMenu()
+    {
+        if (!_isOpen)
+        {
+            var bounds = await JSRuntime.InvokeAsync<ElementBounds>("getElementBounds", _buttonId);
+            const int panelWidth = 236;
+            const int panelHeight = 290;
+
+            // Always anchor the RIGHT edge of the panel to the RIGHT edge of the button
+            // This ensures the panel never overflows to the right
+            _menuLeft = bounds.Right - panelWidth;
+            if (_menuLeft < 4) _menuLeft = 4;
+
+            // Open below unless too close to bottom — then open above
+            if (bounds.Bottom + panelHeight > bounds.ViewportHeight)
+                _menuTop = Math.Max(4, bounds.Top - panelHeight);
+            else
+                _menuTop = bounds.Bottom + 2;
+        }
+        _isOpen = !_isOpen;
+    }
+
+    private void CloseMenu() => _isOpen = false;
+
+    private async Task SelectColor(string? color)
+    {
+        Value = color;
+        _isOpen = false;
+        await ValueChanged.InvokeAsync(color);
+    }
+
+    private readonly string[] ThemeColors = {
+        "#ffffff", "#000000", "#e7e6e6", "#44546a", "#5b9bd5",
+        "#ed7d31", "#a5a5a5", "#ffc000", "#4472c4", "#70ad47"
+    };
+
+    private readonly string[] StandardColors = {
+        "#c00000", "#ff0000", "#ffc000", "#ffff00", "#92d050",
+        "#00b050", "#00b0f0", "#0070c0", "#002060", "#7030a0"
+    };
+
+    private readonly string[][] ThemeShades = {
+        new[] { "#f2f2f2", "#d8d8d8", "#bfbfbf", "#a5a5a5", "#7f7f7f" },
+        new[] { "#7f7f7f", "#595959", "#3f3f3f", "#262626", "#0c0c0c" },
+        new[] { "#d0cece", "#a6a6a6", "#7b7b7b", "#525252", "#333333" },
+        new[] { "#d6dce4", "#adb9ca", "#8497b0", "#333f4f", "#222a35" },
+        new[] { "#deebf6", "#bdd7ee", "#9cc2e5", "#2e75b5", "#1e4e79" },
+        new[] { "#fbe5d5", "#f7cbac", "#f4b083", "#c55a11", "#833c0b" },
+        new[] { "#ededed", "#dbdbdb", "#c9c9c9", "#7b7b7b", "#525252" },
+        new[] { "#fff2cc", "#ffe599", "#ffd966", "#bf8f00", "#7f6000" },
+        new[] { "#d9e1f2", "#b4c6e7", "#8eaadb", "#2f5496", "#1f3864" },
+        new[] { "#e2efda", "#c6e0b4", "#a8d08d", "#538135", "#375623" }
+    };
+
+    private class ElementBounds
+    {
+        public double Top { get; set; }
+        public double Left { get; set; }
+        public double Bottom { get; set; }
+        public double Right { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public double ViewportWidth { get; set; }
+        public double ViewportHeight { get; set; }
+    }
+}
+

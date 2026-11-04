@@ -1,0 +1,33 @@
+<MudNavMenu Class="ent-nav-item mt-4">
+    <div class="px-6 mb-2">
+        <MudText Typo="Typo.overline" Style="color: var(--color-text-tertiary); font-weight: 700; letter-spacing: 1px;">WORKSPACE</MudText>
+    </div>
+    
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard" Class="mb-1">Dashboard</MudNavLink>
+    <MudNavLink Href="/upload" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CloudUpload" Class="mb-4">Upload Excel</MudNavLink>
+    
+    <div class="px-6 mt-6 mb-2">
+        <MudText Typo="Typo.overline" Style="color: var(--color-text-tertiary); font-weight: 700; letter-spacing: 1px;">DATA VIEWS</MudText>
+    </div>
+    
+    <MudNavLink Href="/wo-list" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ListAlt" Class="mb-1">WO Master List</MudNavLink>
+    <MudNavLink Href="/reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Assessment" Class="mb-4">Monthly Reports</MudNavLink>
+
+    <div class="px-6 mt-6 mb-2">
+        <MudText Typo="Typo.overline" Style="color: var(--color-text-tertiary); font-weight: 700; letter-spacing: 1px;">DOCUMENT STUDIO</MudText>
+    </div>
+
+    <MudNavGroup Title="CM Review" Icon="@Icons.Material.Filled.DocumentScanner" Expanded="true" Class="mb-4">
+        <MudNavLink Href="/cm-reviews" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.List" Class="mb-1">Document List</MudNavLink>
+        <MudNavLink Href="/cm-review/document-preparation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Edit">Document Preparation</MudNavLink>
+    </MudNavGroup>
+    
+    <div class="px-6 mt-6 mb-2">
+        <MudText Typo="Typo.overline" Style="color: var(--color-text-tertiary); font-weight: 700; letter-spacing: 1px;">SYSTEM</MudText>
+    </div>
+    
+    <MudNavLink Href="/mappings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Tune" Class="mb-1">Mapping Configuration</MudNavLink>
+    <MudNavLink Href="/history" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.History" Class="mb-1">Upload History</MudNavLink>
+    <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+
+</MudNavMenu>

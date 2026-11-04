@@ -1,0 +1,365 @@
+@page "/mappings"
+@using WO_CM_Review_Automation.Application.Mappings.Interfaces
+@using WO_CM_Review_Automation.Domain.Entities
+@inject IMappingService MappingService
+@inject ISnackbar Snackbar
+
+<PageTitle>Mapping Management - WO CM Review</PageTitle>
+
+<EnterprisePageHeader Title="Mapping Configuration" Subtitle="Manage Functional Unit and Team Leader mappings for report generation" />
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-6 mb-16">
+    <EnterpriseCard Class="pa-0">
+        <MudTabs ApplyEffectsToContainer="true">
+        
+        <MudTabPanel Text="Application Mappings" Class="ent-p-md">
+            <MudTable T="ApplicationMapping" Items="@_applicationMappings" 
+                      Hover="true" Dense="true" Striped="true" Class="ent-table"
+                      RowEditCommit="CommittedAppChanges" RowEditCancel="CanceledEditingApp"
+                      ApplyButtonPosition="TableApplyButtonPosition.End" EditButtonPosition="TableEditButtonPosition.End" EditTrigger="TableEditTrigger.EditButton">
+                <ToolBarContent>
+                    <MudText Typo="Typo.h6">Applications</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Add" OnClick="AddApplication">Add New</MudButton>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>Normalized Name (Dropdown)</MudTh>
+                    <MudTh>Alias / Source Keyword</MudTh>
+                    <MudTh>Is Active</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Normalized Name">@context.NormalizedName</MudTd>
+                    <MudTd DataLabel="Alias Name">@context.AliasName</MudTd>
+                    <MudTd DataLabel="Is Active">@(context.IsActive ? "Yes" : "No")</MudTd>
+                    <MudTd>
+                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="@(() => DeleteApplication(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <RowEditingTemplate>
+                    <MudTd DataLabel="Normalized Name">
+                        <MudTextField @bind-Value="context.NormalizedName" Required="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Alias Name">
+                        <MudTextField @bind-Value="context.AliasName" Required="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Is Active">
+                        <MudSwitch T="bool" @bind-Checked="context.IsActive" Color="Color.Primary" />
+                    </MudTd>
+                    <MudTd></MudTd>
+                </RowEditingTemplate>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Functional Unit Mappings" Class="ent-p-md">
+            <MudTable T="FunctionalUnitMapping" Items="@_functionalUnitMappings" 
+                      Hover="true" Dense="true" Striped="true" Class="ent-table"
+                      RowEditCommit="CommittedFUChanges" RowEditCancel="CanceledEditingFU"
+                      ApplyButtonPosition="TableApplyButtonPosition.End" EditButtonPosition="TableEditButtonPosition.End" EditTrigger="TableEditTrigger.EditButton">
+                <ToolBarContent>
+                    <MudText Typo="Typo.h6">Functional Units</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Add" OnClick="AddFunctionalUnit">Add New</MudButton>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>Source Keyword / Service Name</MudTh>
+                    <MudTh>Assigned Functional Unit</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Source Keyword">@context.SourceValue</MudTd>
+                    <MudTd DataLabel="Functional Unit">@context.FunctionalUnitName</MudTd>
+                    <MudTd>
+                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="@(() => DeleteFunctionalUnit(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <RowEditingTemplate>
+                    <MudTd DataLabel="Source Keyword">
+                        <MudTextField @bind-Value="context.SourceValue" Required="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Functional Unit">
+                        <MudTextField @bind-Value="context.FunctionalUnitName" Required="true" />
+                    </MudTd>
+                    <MudTd></MudTd>
+                </RowEditingTemplate>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Team Leader Mappings" Class="ent-p-md">
+            <MudTable T="TeamLeaderMapping" Items="@_teamLeaderMappings" 
+                      Hover="true" Dense="true" Striped="true" Class="ent-table"
+                      RowEditCommit="CommittedTLChanges" RowEditCancel="CanceledEditingTL"
+                      ApplyButtonPosition="TableApplyButtonPosition.End" EditButtonPosition="TableEditButtonPosition.End" EditTrigger="TableEditTrigger.EditButton">
+                <ToolBarContent>
+                    <MudText Typo="Typo.h6">Team Leaders</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Add" OnClick="AddTeamLeader">Add New</MudButton>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>Source Functional Unit</MudTh>
+                    <MudTh>Assigned POC / Team Leader</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Source Functional Unit">@context.SourceValue</MudTd>
+                    <MudTd DataLabel="Team Leader">@context.TeamLeaderName</MudTd>
+                    <MudTd>
+                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="@(() => DeleteTeamLeader(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <RowEditingTemplate>
+                    <MudTd DataLabel="Source Functional Unit">
+                        <MudTextField @bind-Value="context.SourceValue" Required="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Team Leader">
+                        <MudTextField @bind-Value="context.TeamLeaderName" Required="true" />
+                    </MudTd>
+                    <MudTd></MudTd>
+                </RowEditingTemplate>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Change Category Mappings" Class="ent-p-md">
+            <MudTable T="ChangeCategoryMapping" Items="@_changeCategoryMappings" 
+                      Hover="true" Dense="true" Striped="true" Class="ent-table"
+                      RowEditCommit="CommittedChangeCatChanges" RowEditCancel="CanceledEditingChangeCat"
+                      ApplyButtonPosition="TableApplyButtonPosition.End" EditButtonPosition="TableEditButtonPosition.End" EditTrigger="TableEditTrigger.EditButton">
+                <ToolBarContent>
+                    <MudText Typo="Typo.h6">Change Category Routing Rules</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.Add" OnClick="AddChangeCategoryMapping">Add New</MudButton>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>Application Name</MudTh>
+                    <MudTh>Change Type (e.g. Normal-minor)</MudTh>
+                    <MudTh>Target Category Name</MudTh>
+                    <MudTh>Is Active</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Application Name">@context.ApplicationName</MudTd>
+                    <MudTd DataLabel="Change Type">@context.ChangeType</MudTd>
+                    <MudTd DataLabel="Target Category">@context.CategoryName</MudTd>
+                    <MudTd DataLabel="Is Active">@(context.IsActive ? "Yes" : "No")</MudTd>
+                    <MudTd>
+                        <MudIconButton Size="@Size.Small" Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="@(() => DeleteChangeCategoryMapping(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <RowEditingTemplate>
+                    <MudTd DataLabel="Application Name">
+                        <MudTextField @bind-Value="context.ApplicationName" Required="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Change Type">
+                        <MudTextField @bind-Value="context.ChangeType" Required="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Target Category">
+                        <MudTextField @bind-Value="context.CategoryName" Required="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Is Active">
+                        <MudSwitch T="bool" @bind-Checked="context.IsActive" Color="Color.Primary" />
+                    </MudTd>
+                    <MudTd></MudTd>
+                </RowEditingTemplate>
+            </MudTable>
+        </MudTabPanel>
+        </MudTabs>
+    </EnterpriseCard>
+</MudContainer>
+
+@code {
+    private List<FunctionalUnitMapping> _functionalUnitMappings = new();
+    private List<TeamLeaderMapping> _teamLeaderMappings = new();
+    private List<ApplicationMapping> _applicationMappings = new();
+    private List<ChangeCategoryMapping> _changeCategoryMappings = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _functionalUnitMappings = await MappingService.GetFunctionalUnitMappingsAsync();
+        _teamLeaderMappings = await MappingService.GetTeamLeaderMappingsAsync();
+        _applicationMappings = await MappingService.GetApplicationMappingsAsync();
+        _changeCategoryMappings = await MappingService.GetChangeCategoryMappingsAsync();
+    }
+
+    // --- Application Logic ---
+
+    private void AddApplication()
+    {
+        var newItem = new ApplicationMapping { NormalizedName = "New Application", AliasName = "New Alias", IsActive = true };
+        _applicationMappings.Insert(0, newItem);
+    }
+
+    private void CanceledEditingApp(object element)
+    {
+        var item = (ApplicationMapping)element;
+        if (item.Id == Guid.Empty)
+        {
+            _applicationMappings.Remove(item);
+        }
+    }
+
+    private async void CommittedAppChanges(object element)
+    {
+        var item = (ApplicationMapping)element;
+        if (item.Id == Guid.Empty)
+        {
+            await MappingService.AddApplicationMappingAsync(item);
+            Snackbar.Add("Application Mapping Added", Severity.Success);
+        }
+        else
+        {
+            await MappingService.UpdateApplicationMappingAsync(item);
+            Snackbar.Add("Application Mapping Updated", Severity.Success);
+        }
+    }
+
+    private async Task DeleteApplication(ApplicationMapping item)
+    {
+        if (item.Id != Guid.Empty)
+        {
+            await MappingService.DeleteApplicationMappingAsync(item.Id);
+            Snackbar.Add("Application Mapping Deleted", Severity.Success);
+        }
+        _applicationMappings.Remove(item);
+    }
+
+    // --- Functional Unit Logic ---
+
+    private void AddFunctionalUnit()
+    {
+        var newItem = new FunctionalUnitMapping { SourceValue = "New Source", FunctionalUnitName = "New Unit" };
+        _functionalUnitMappings.Insert(0, newItem);
+    }
+
+    private void StartedEditingFU(FunctionalUnitMapping item)
+    {
+        // Optional logic
+    }
+
+    private void CanceledEditingFU(object element)
+    {
+        var item = (FunctionalUnitMapping)element;
+        if (item.Id == Guid.Empty)
+        {
+            _functionalUnitMappings.Remove(item);
+        }
+    }
+
+    private async void CommittedFUChanges(object element)
+    {
+        var item = (FunctionalUnitMapping)element;
+        if (item.Id == Guid.Empty)
+        {
+            await MappingService.AddFunctionalUnitMappingAsync(item);
+            Snackbar.Add("Functional Unit Mapping Added", Severity.Success);
+        }
+        else
+        {
+            await MappingService.UpdateFunctionalUnitMappingAsync(item);
+            Snackbar.Add("Functional Unit Mapping Updated", Severity.Success);
+        }
+    }
+
+    private async Task DeleteFunctionalUnit(FunctionalUnitMapping item)
+    {
+        if (item.Id != Guid.Empty)
+        {
+            await MappingService.DeleteFunctionalUnitMappingAsync(item.Id);
+            Snackbar.Add("Functional Unit Mapping Deleted", Severity.Success);
+        }
+        _functionalUnitMappings.Remove(item);
+    }
+
+    // --- Team Leader Logic ---
+
+    private void AddTeamLeader()
+    {
+        var newItem = new TeamLeaderMapping { SourceValue = "New Unit", TeamLeaderName = "New Leader" };
+        _teamLeaderMappings.Insert(0, newItem);
+    }
+
+    private void StartedEditingTL(TeamLeaderMapping item)
+    {
+        // Optional logic
+    }
+
+    private void CanceledEditingTL(object element)
+    {
+        var item = (TeamLeaderMapping)element;
+        if (item.Id == Guid.Empty)
+        {
+            _teamLeaderMappings.Remove(item);
+        }
+    }
+
+    private async void CommittedTLChanges(object element)
+    {
+        var item = (TeamLeaderMapping)element;
+        if (item.Id == Guid.Empty)
+        {
+            await MappingService.AddTeamLeaderMappingAsync(item);
+            Snackbar.Add("Team Leader Mapping Added", Severity.Success);
+        }
+        else
+        {
+            await MappingService.UpdateTeamLeaderMappingAsync(item);
+            Snackbar.Add("Team Leader Mapping Updated", Severity.Success);
+        }
+    }
+
+    private async Task DeleteTeamLeader(TeamLeaderMapping item)
+    {
+        if (item.Id != Guid.Empty)
+        {
+            await MappingService.DeleteTeamLeaderMappingAsync(item.Id);
+            Snackbar.Add("Team Leader Mapping Deleted", Severity.Success);
+        }
+        _teamLeaderMappings.Remove(item);
+    }
+
+    // --- Change Category Mapping Logic ---
+
+    private void AddChangeCategoryMapping()
+    {
+        var newItem = new ChangeCategoryMapping { ApplicationName = "Sales Force App", ChangeType = "Normal-minor", CategoryName = "Business Logic -OneSalesApp", IsActive = true };
+        _changeCategoryMappings.Insert(0, newItem);
+    }
+
+    private void CanceledEditingChangeCat(object element)
+    {
+        var item = (ChangeCategoryMapping)element;
+        if (item.Id == Guid.Empty)
+        {
+            _changeCategoryMappings.Remove(item);
+        }
+    }
+
+    private async void CommittedChangeCatChanges(object element)
+    {
+        var item = (ChangeCategoryMapping)element;
+        if (item.Id == Guid.Empty)
+        {
+            await MappingService.AddChangeCategoryMappingAsync(item);
+            Snackbar.Add("Change Category Mapping Added", Severity.Success);
+        }
+        else
+        {
+            await MappingService.UpdateChangeCategoryMappingAsync(item);
+            Snackbar.Add("Change Category Mapping Updated", Severity.Success);
+        }
+    }
+
+    private async Task DeleteChangeCategoryMapping(ChangeCategoryMapping item)
+    {
+        if (item.Id != Guid.Empty)
+        {
+            await MappingService.DeleteChangeCategoryMappingAsync(item.Id);
+            Snackbar.Add("Change Category Mapping Deleted", Severity.Success);
+        }
+        _changeCategoryMappings.Remove(item);
+    }
+}

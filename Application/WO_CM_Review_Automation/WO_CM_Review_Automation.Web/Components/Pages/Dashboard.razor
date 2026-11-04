@@ -1,0 +1,323 @@
+@page "/"
+@using WO_CM_Review_Automation.Application.Processing
+@using WO_CM_Review_Automation.Domain.Entities
+@using WO_CM_Review_Automation.Infrastructure.Data
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext DbContext
+@inject IProcessingEngine ProcessingEngine
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+<PageTitle>Dashboard - WO CM Review</PageTitle>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (!_recentUploads.Any())
+{
+    <EnterpriseEmptyState 
+        Icon="@Icons.Material.Filled.SpaceDashboard" 
+        Title="No Operational Data Available" 
+        Description="Import an Enterprise Excel extract to populate the operational dashboard and begin processing reports."
+        PrimaryAction="GoToUpload"
+        PrimaryActionText="Import Data" />
+}
+else
+{
+    <!-- Top Header -->
+    <EnterprisePageHeader Title="Operational Dashboard" Subtitle="Monthly Change Management Overview">
+        <ActionContent>
+            <MudSelect T="Guid?" Value="@_selectedUploadId" ValueChanged="OnUploadSelected" Variant="Variant.Outlined" Margin="Margin.Dense" Class="ent-input" Style="width: 280px; background-color: var(--color-bg-surface);" Underline="false">
+                @foreach (var upload in _recentUploads)
+                {
+                    <MudSelectItem T="Guid?" Value="@upload.Id">@upload.UploadDate.ToString("MMMM yyyy") - @upload.FileName</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="ent-btn" StartIcon="@Icons.Material.Filled.Refresh" OnClick="RefreshData" Disabled="@(_selectedUploadId == null || _isLoading)">Refresh</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" Class="ent-btn" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteUpload" Disabled="@(_selectedUploadId == null || _isLoading)">Delete</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" StartIcon="@Icons.Material.Filled.PictureAsPdf" Disabled="@(_result == null)" OnClick="@(() => NavigationManager.NavigateTo("/report"))">Export Report</MudButton>
+        </ActionContent>
+    </EnterprisePageHeader>
+
+    @if (_result != null && _selectedUpload != null)
+    {
+        <!-- KPI Row -->
+        <MudGrid Spacing="3" Class="mb-6">
+            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
+                <EnterpriseStatCard Title="RAW WORK ORDERS" Value="@_result.Statistics.RawWorkOrders.ToString("N0")" SubText="Total parsed rows" Icon="@Icons.Material.Outlined.FilePresent" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
+                <EnterpriseStatCard Title="TEAM SCOPE" Value="@_result.Statistics.FilteredWorkOrders.ToString("N0")" SubText="After exclusions applied" Icon="@Icons.Material.Outlined.FilterAlt" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
+                <EnterpriseStatCard Title="APPLICATIONS" Value="@_result.Statistics.ProcessedApplications.ToString("N0")" SubText="Unique mapped apps" Icon="@Icons.Material.Outlined.Apps" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
+                <EnterpriseCard Class="ent-p-md d-flex flex-column justify-center ent-card-hoverable position-relative" Style="height: 120px; overflow: hidden;">
+                    <div class="position-absolute" style="@($"top: 0; left: 0; width: 4px; height: 100%; background-color: var(--color-{(_result.Statistics.UnknownApplications > 0 ? "status-error" : "status-success")});")"></div>
+                    <div class="d-flex justify-space-between align-start mb-2">
+                        <MudText Typo="Typo.overline" Style="color: var(--color-text-secondary); font-weight: 600; letter-spacing: 0.5px;">UNKNOWN APPS</MudText>
+                        <MudIcon Icon="@Icons.Material.Outlined.HelpOutline" Size="Size.Small" Style="color: var(--color-text-muted);" />
+                    </div>
+                    <MudText Typo="Typo.h4" Class="font-weight-bold" Style="@($"color: var(--color-{(_result.Statistics.UnknownApplications > 0 ? "status-error" : "status-success")}); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 1.2; letter-spacing: -0.5px;")">@_result.Statistics.UnknownApplications</MudText>
+                    <MudText Typo="Typo.caption" Style="color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; margin-top: 4px;">Require manual mapping</MudText>
+                </EnterpriseCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="flex-grow-1">
+                <EnterpriseStatCard Title="PROCESSING TIME" Value="@($"{_processingTimeMs} ms")" SubText="Single thread calculation" Icon="@Icons.Material.Outlined.Timer" />
+            </MudItem>
+        </MudGrid>
+
+        <!-- Main Layout (70 / 30) -->
+        <MudGrid Spacing="3">
+            <!-- Left Side: 70% -->
+            <MudItem xs="12" lg="8">
+                <EnterpriseCard Class="d-flex flex-column h-100">
+                    <EnterpriseDataGrid T="ApplicationSummaryItem" Items="@_result.MonthlySummary.Items" Title="Monthly Summary" Height="calc(100vh - 350px)">
+                        <Columns>
+                            <PropertyColumn T="ApplicationSummaryItem" TProperty="int" Property="x => x.DisplayOrder" Title="Order" Sortable="true" HeaderStyle="width: 80px;" />
+                            <PropertyColumn T="ApplicationSummaryItem" TProperty="string" Property="x => x.ApplicationName" Title="Application Name" />
+                            <TemplateColumn T="ApplicationSummaryItem" Title="Count" Sortable="true" SortBy="@(x => x.Count)" CellStyle="text-align: right; width: 120px;" HeaderStyle="text-align: right;">
+                                <CellTemplate>
+                                    <MudLink Typo="Typo.body2" Color="Color.Primary" Class="font-weight-bold" Style="cursor: pointer; text-decoration: none;" OnClick="@(() => OpenDrillDown(context.Item.ApplicationName))">
+                                        @context.Item.Count
+                                    </MudLink>
+                                </CellTemplate>
+                            </TemplateColumn>
+                        </Columns>
+                    </EnterpriseDataGrid>
+                </EnterpriseCard>
+            </MudItem>
+
+            <!-- Right Side: 30% -->
+            <MudItem xs="12" lg="4">
+                <div class="d-flex flex-column h-100 ent-gap-md" style="max-height: calc(100vh - 350px); overflow-y: auto; padding-right: 4px;">
+                    <!-- Unknown Applications -->
+                    @if (_unknownApps.Any())
+                    {
+                        <EnterpriseCard Class="ent-p-md" Style="border-left: 4px solid var(--color-warning);">
+                            <div class="d-flex align-center mb-2">
+                                <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Color="Color.Warning" Class="mr-2" />
+                                <MudText Typo="Typo.h6" Class="ent-text-h3">Action Required</MudText>
+                            </div>
+                            <MudText Typo="Typo.body2" Class="mb-4" Style="color: var(--color-text-secondary);">@_unknownApps.Count unmapped applications found.</MudText>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Warning" FullWidth="true" Class="ent-btn">View Details</MudButton>
+                        </EnterpriseCard>
+                    }
+
+                    <!-- Recent Uploads -->
+                    <EnterpriseCard>
+                        <div class="ent-card-header">
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">Recent Uploads</MudText>
+                        </div>
+                        <MudList T="UploadHistory" Dense="true" Class="pa-0">
+                            @foreach (var upload in _recentUploads.Take(3))
+                            {
+                                <MudListItem T="UploadHistory" OnClick="@(() => OnUploadSelected(upload.Id))" Class="pa-4" Style="border-bottom: 1px solid var(--color-border);">
+                                    <div class="d-flex justify-space-between align-center w-100 mb-1">
+                                        <MudText Typo="Typo.body2" Class="font-weight-bold">@upload.UploadDate.ToString("MMMM yyyy")</MudText>
+                                        <MudChip T="string" Size="Size.Small" Color="@(upload.UploadStatus == "Completed" ? Color.Success : Color.Default)" Variant="Variant.Text">@upload.UploadStatus</MudChip>
+                                    </div>
+                                    <div class="d-flex justify-space-between align-center w-100">
+                                        <MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">@upload.UploadDate.ToString("dd MMM, HH:mm")</MudText>
+                                        <MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">@upload.RawWorkOrders rows</MudText>
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </EnterpriseCard>
+
+                    <!-- Processing Statistics -->
+                    <EnterpriseCard>
+                        <div class="ent-card-header">
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="letter-spacing: -0.5px;">System Statistics</MudText>
+                        </div>
+                        <div class="ent-p-md">
+                            <MudGrid Spacing="1">
+                                <MudItem xs="8"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">Filtered WOs</MudText></MudItem>
+                                <MudItem xs="4" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold">@_result.Statistics.FilteredWorkOrders</MudText></MudItem>
+                                
+                                <MudItem xs="8"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">Processed Apps</MudText></MudItem>
+                                <MudItem xs="4" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold">@_result.Statistics.ProcessedApplications</MudText></MudItem>
+                                
+                                <MudItem xs="8"><MudText Typo="Typo.body2" Style="color: var(--color-text-secondary);">Duplicates Removed</MudText></MudItem>
+                                <MudItem xs="4" Class="text-right"><MudText Typo="Typo.body2" Class="font-weight-bold">@_result.Statistics.DuplicateApplicationsRemoved</MudText></MudItem>
+                                
+                                <MudItem xs="12"><MudDivider Class="my-2" Style="border-color: var(--color-border);" /></MudItem>
+                                
+                                <MudItem xs="8"><MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">Last Generated</MudText></MudItem>
+                                <MudItem xs="4" Class="text-right"><MudText Typo="Typo.caption" Style="color: var(--color-text-muted);">@(_selectedUpload.SummaryGeneratedAt?.ToString("HH:mm:ss") ?? "-")</MudText></MudItem>
+                            </MudGrid>
+                        </div>
+                    </EnterpriseCard>
+                </div>
+            </MudItem>
+        </MudGrid>
+    }
+}
+
+@code {
+    private List<UploadHistory> _recentUploads = new();
+    private Guid? _selectedUploadId;
+    private UploadHistory? _selectedUpload;
+    private ProcessingResult? _result;
+    private bool _isLoading;
+    private long _processingTimeMs;
+
+    private List<UnknownAppSummary> _unknownApps = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _recentUploads = await DbContext.UploadHistories
+            .OrderByDescending(x => x.UploadDate)
+            .ToListAsync();
+
+        if (_recentUploads.Any())
+        {
+            await OnUploadSelected(_recentUploads.First().Id);
+        }
+    }
+
+    private void GoToUpload()
+    {
+        NavigationManager.NavigateTo("/upload");
+    }
+
+    private async Task OnUploadSelected(Guid? uploadId)
+    {
+        _selectedUploadId = uploadId;
+        if (uploadId.HasValue)
+        {
+            await LoadDashboardData(uploadId.Value);
+        }
+        else
+        {
+            _result = null;
+            _selectedUpload = null;
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        if (_selectedUploadId.HasValue)
+        {
+            await LoadDashboardData(_selectedUploadId.Value);
+        }
+    }
+
+    private async Task LoadDashboardData(Guid uploadId)
+    {
+        _isLoading = true;
+        try
+        {
+            _selectedUpload = _recentUploads.FirstOrDefault(x => x.Id == uploadId);
+            
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            _result = await ProcessingEngine.ProcessBatchAsync(uploadId);
+            sw.Stop();
+            _processingTimeMs = sw.ElapsedMilliseconds;
+
+            _unknownApps = _result.ProcessedWorkOrders
+                .Where(x => x.NormalizedApplicationName == "Unknown Application")
+                .GroupBy(x => x.OriginalServiceName)
+                .Select(g => new UnknownAppSummary 
+                { 
+                    OriginalServiceName = g.Key, 
+                    Count = g.Count(), 
+                    ExampleWoId = g.First().WoId 
+                })
+                .OrderByDescending(x => x.Count)
+                .ToList();
+                
+            if (_selectedUpload != null && _result.Statistics.RawWorkOrders > 0)
+            {
+                _selectedUpload.RawWorkOrders = _result.Statistics.RawWorkOrders;
+                _selectedUpload.UploadStatus = "Completed";
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading dashboard: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OpenDrillDown(string applicationName)
+    {
+        if (_result == null) return;
+
+        var parameters = new DialogParameters<DrillDownDialog>
+        {
+            { x => x.ApplicationName, applicationName },
+            { x => x.WorkOrders, _result.ProcessedWorkOrders.Where(w => w.NormalizedApplicationName == applicationName).ToList() }
+        };
+
+        var options = new DialogOptions 
+        { 
+            MaxWidth = MaxWidth.ExtraLarge, 
+            FullWidth = true, 
+            CloseButton = true, 
+            BackdropClick = true,
+            NoHeader = true // Custom Enterprise header is used
+        };
+        
+        DialogService.ShowAsync<DrillDownDialog>("", parameters, options);
+    }
+
+    private class UnknownAppSummary
+    {
+        public string OriginalServiceName { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public string ExampleWoId { get; set; } = string.Empty;
+    }
+
+    private async Task DeleteUpload()
+    {
+        if (_selectedUpload == null) return;
+
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Are you sure you want to delete the dataset from '{_selectedUpload.UploadDate.ToString("MMM yyyy")}'? This will permanently delete {_selectedUpload.RawWorkOrders} work orders and cannot be undone." },
+            { "ButtonText", "Delete Dataset" },
+            { "Color", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+
+        var dialog = await DialogService.ShowAsync<WO_CM_Review_Automation.Web.Components.Shared.Enterprise.EnterpriseDialog>("Delete Confirmation", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            try
+            {
+                _isLoading = true;
+                
+                // Cascade delete should handle WorkOrders if configured properly, but explicit deletion is safer
+                var workOrders = await DbContext.WorkOrders.Where(w => w.UploadHistoryId == _selectedUpload.Id).ToListAsync();
+                DbContext.WorkOrders.RemoveRange(workOrders);
+                DbContext.UploadHistories.Remove(_selectedUpload);
+                
+                await DbContext.SaveChangesAsync();
+                
+                Snackbar.Add("Dataset deleted successfully.", Severity.Success);
+                
+                // Refresh list
+                await OnInitializedAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting dataset: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                _isLoading = false;
+            }
+        }
+    }
+}

@@ -1,0 +1,6 @@
+.enterprise-appbar { border-bottom: 1px solid #E5E7EB !important; }
+.enterprise-drawer { border-right: 1px solid #E5E7EB !important; }
+.enterprise-nav .mud-nav-item .mud-nav-link { margin: 4px 12px; border-radius: 8px; transition: all 150ms ease; }
+.enterprise-nav .mud-nav-item .mud-nav-link.active { background-color: #EFF6FF !important; color: #2563EB !important; font-weight: 600; }
+.enterprise-nav .mud-nav-item .mud-nav-link.active .mud-icon-root { color: #2563EB !important; }
+.enterprise-nav .mud-nav-item .mud-nav-link:hover:not(.active) { background-color: #F3F4F6 !important; }

@@ -1,0 +1,11 @@
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+appsettings.Development.json
+*.log
+Logs/
+venv/
+.venv/
+__pycache__/

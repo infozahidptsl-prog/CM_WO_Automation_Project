@@ -1,0 +1,7 @@
+@inherits MudComponentBase
+<MudPaper Class="@($"ent-card {Class}")" Elevation="0" Style="@Style" @attributes="UserAttributes">
+    @ChildContent
+</MudPaper>
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,4 @@
+.enterprise-table .mud-table-head .mud-table-cell { background-color: #F9FAFB !important; font-weight: 600 !important; color: #4B5563 !important; border-bottom: 2px solid #E5E7EB !important; }
+.enterprise-table .mud-table-body .mud-table-row:nth-child(even) { background-color: #F9FAFB; }
+.enterprise-table .mud-table-body .mud-table-row:hover { background-color: #F3F4F6 !important; }
+.enterprise-table .mud-table-cell { padding: 12px 16px !important; border-bottom: 1px solid #E5E7EB !important; }

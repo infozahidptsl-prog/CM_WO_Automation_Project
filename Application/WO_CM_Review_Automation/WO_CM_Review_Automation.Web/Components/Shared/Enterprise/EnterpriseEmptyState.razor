@@ -1,0 +1,19 @@
+@inherits MudComponentBase
+<div class="d-flex flex-column align-center justify-center ent-p-lg w-100" style="min-height: 400px;">
+    <MudIcon Icon="@Icon" Style="font-size: 80px; color: var(--color-text-muted);" Class="mb-4 ent-fade-in" />
+    <MudText Typo="Typo.h5" Class="ent-text-h3 mb-2 text-center">@Title</MudText>
+    <MudText Typo="Typo.body1" Class="mb-6 text-center ent-text-subtitle" Style="max-width: 500px;">@Description</MudText>
+    <div class="d-flex ent-gap-md">
+        @if(PrimaryAction.HasDelegate) { <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="ent-btn" OnClick="PrimaryAction">@PrimaryActionText</MudButton> }
+        @if(SecondaryAction.HasDelegate) { <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="ent-btn" OnClick="SecondaryAction">@SecondaryActionText</MudButton> }
+    </div>
+</div>
+@code {
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Info;
+    [Parameter] public string Title { get; set; } = "No data";
+    [Parameter] public string Description { get; set; } = string.Empty;
+    [Parameter] public EventCallback PrimaryAction { get; set; }
+    [Parameter] public string PrimaryActionText { get; set; } = "Action";
+    [Parameter] public EventCallback SecondaryAction { get; set; }
+    [Parameter] public string SecondaryActionText { get; set; } = "Cancel";
+}
