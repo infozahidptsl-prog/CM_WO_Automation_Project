@@ -47,6 +47,10 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
     public bool IsDocumentLoaded { get; set; }
     public List<string> ActiveApplications { get; set; } = new();
 
+    public string DisplayApp => string.Equals(DocumentModel?.Application, "Techvan", StringComparison.OrdinalIgnoreCase)
+        ? "TechVan"
+        : (DocumentModel?.Application ?? "");
+
     private bool _showSiemWarningDialog = false;
     private enum PendingSiemAction
     {

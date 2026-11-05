@@ -4,7 +4,7 @@
 @using WO_CM_Review_Automation.Domain.Entities.CMReview
 @inject NavigationManager NavigationManager
 
-<PageTitle>Prepare document - WO CM Review</PageTitle>
+<PageTitle>@DisplayApp - Prepare document - WO CM Review</PageTitle>
 
 <div class="prep-wrapper print-hide">
     <!-- Back Link -->
@@ -115,7 +115,10 @@
                 <!-- 1. Change Categories Section -->
                 <div class="prep-section">
                     <div class="prep-section-header">
-                        <span class="prep-section-title">Change categories</span>
+                        <div class="d-flex align-center gap-2">
+                            <span class="prep-section-title">Change categories</span>
+                            <span class="prep-app-tag">@DisplayApp</span>
+                        </div>
                         <span class="prep-section-meta">@DocumentModel.ChangeCategories.Count(c => c.HasChanges) with changes</span>
                     </div>
 
@@ -236,7 +239,10 @@
                 <!-- 2. Server Evidence Section -->
                 <div class="prep-section">
                     <div class="prep-section-header">
-                        <span class="prep-section-title">Server evidence</span>
+                        <div class="d-flex align-center gap-2">
+                            <span class="prep-section-title">Server evidence</span>
+                            <span class="prep-app-tag">@DisplayApp</span>
+                        </div>
                         <span class="prep-section-meta">@DocumentModel.ServerEvidences.Count @(DocumentModel.ServerEvidences.Count == 1 ? "server" : "servers")</span>
                     </div>
 
@@ -314,7 +320,7 @@
                         <div class="prep-server-editor-card">
                             <div class="prep-server-card-top-bar">
                                 <div class="prep-server-card-badge">
-                                    Server @(activeIndex + 1) of @DocumentModel.ServerEvidences.Count
+                                    @DisplayApp · Server @(activeIndex + 1) of @DocumentModel.ServerEvidences.Count
                                 </div>
                                 <div class="prep-server-card-reorder">
                                     <button type="button"
@@ -390,7 +396,10 @@
                 <!-- 3. Evidence Screenshots Section -->
                 <div class="prep-section">
                     <div class="prep-section-header">
-                        <span class="prep-section-title">Evidence screenshots</span>
+                        <div class="d-flex align-center gap-2">
+                            <span class="prep-section-title">Evidence screenshots</span>
+                            <span class="prep-app-tag">@DisplayApp</span>
+                        </div>
                         <span class="prep-section-meta">Auto-attached</span>
                     </div>
 
@@ -521,7 +530,10 @@
                 <!-- 4. Document Info Section -->
                 <div class="prep-section">
                     <div class="prep-section-header">
-                        <span class="prep-section-title">Document info</span>
+                        <div class="d-flex align-center gap-2">
+                            <span class="prep-section-title">Document info</span>
+                            <span class="prep-app-tag">@DisplayApp</span>
+                        </div>
                     </div>
 
                     <div class="prep-docinfo-grid">
@@ -544,6 +556,7 @@
                         <div class="prep-preview-indicator">
                             <span class="prep-preview-dot"></span>
                             <span>Live preview</span>
+                            <span class="prep-preview-app-pill">@DisplayApp</span>
                         </div>
 
                         <button type="button" class="dash-btn-outlined prep-export-btn" @onclick="ExportDocumentAsync">
@@ -562,7 +575,8 @@
         <!-- Bottom Action Bar -->
         <div class="prep-bottom-bar">
             <div class="prep-bottom-note">
-                Finalizing locks this version and notifies the approver.
+                <span class="prep-bottom-app-pill">@DisplayApp · @GetMonthName(DocumentModel.ReportingMonth) @DocumentModel.ReportingYear</span>
+                <span>Finalizing locks this version and notifies the approver.</span>
             </div>
 
             <div class="prep-bottom-actions">
