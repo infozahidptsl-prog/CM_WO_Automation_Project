@@ -241,9 +241,12 @@
                     </div>
 
                     <div class="prep-server-pills">
-                        @foreach (var server in DocumentModel.ServerEvidences)
+                        @for (int idx = 0; idx < DocumentModel.ServerEvidences.Count; idx++)
                         {
-                            var srv = server;
+                            var srv = DocumentModel.ServerEvidences[idx];
+                            var index = idx;
+                            var isFirst = index == 0;
+                            var isLast = index == DocumentModel.ServerEvidences.Count - 1;
                             var isSelected = _selectedServerId == srv.Id;
                             var label = !string.IsNullOrWhiteSpace(srv.ServerName)
                                 ? srv.ServerName
@@ -256,13 +259,31 @@
                                 {
                                     <span class="prep-server-shot-count">@srv.Screenshots.Count</span>
                                 }
-                                <button type="button"
-                                        class="prep-server-pill-del"
-                                        title="Remove server"
-                                        @onclick:stopPropagation="true"
-                                        @onclick="@(() => RemoveServerAndAdjustSelection(srv))">
-                                    ×
-                                </button>
+                                <div class="prep-server-pill-actions">
+                                    <button type="button"
+                                            class="prep-server-pill-arrow"
+                                            title="Move server left"
+                                            disabled="@isFirst"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="@(() => MoveServer(srv, -1))">
+                                        ◀
+                                    </button>
+                                    <button type="button"
+                                            class="prep-server-pill-arrow"
+                                            title="Move server right"
+                                            disabled="@isLast"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="@(() => MoveServer(srv, 1))">
+                                        ▶
+                                    </button>
+                                    <button type="button"
+                                            class="prep-server-pill-del"
+                                            title="Remove server"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="@(() => RemoveServerAndAdjustSelection(srv))">
+                                        ×
+                                    </button>
+                                </div>
                             </div>
                         }
 
@@ -288,7 +309,33 @@
                             _selectedServerId = activeServer.Id;
                         }
 
+                        var activeIndex = DocumentModel.ServerEvidences.IndexOf(activeServer);
+
                         <div class="prep-server-editor-card">
+                            <div class="prep-server-card-top-bar">
+                                <div class="prep-server-card-badge">
+                                    Server @(activeIndex + 1) of @DocumentModel.ServerEvidences.Count
+                                </div>
+                                <div class="prep-server-card-reorder">
+                                    <button type="button"
+                                            class="prep-server-reorder-btn"
+                                            title="Move server left"
+                                            disabled="@(activeIndex <= 0)"
+                                            @onclick="@(() => MoveServer(activeServer, -1))">
+                                        <MudIcon Icon="@Icons.Material.Outlined.ArrowBack" Style="font-size: 13px; margin-right: 3px;" />
+                                        <span>Move left</span>
+                                    </button>
+                                    <button type="button"
+                                            class="prep-server-reorder-btn"
+                                            title="Move server right"
+                                            disabled="@(activeIndex < 0 || activeIndex >= DocumentModel.ServerEvidences.Count - 1)"
+                                            @onclick="@(() => MoveServer(activeServer, 1))">
+                                        <span>Move right</span>
+                                        <MudIcon Icon="@Icons.Material.Outlined.ArrowForward" Style="font-size: 13px; margin-left: 3px;" />
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="prep-server-inputs">
                                 <div class="prep-field">
                                     <label>Server IP</label>

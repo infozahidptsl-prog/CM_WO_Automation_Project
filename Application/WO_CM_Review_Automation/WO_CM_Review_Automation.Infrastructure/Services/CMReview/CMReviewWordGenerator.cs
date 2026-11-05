@@ -140,13 +140,8 @@ public class CMReviewWordGenerator : ICMReviewWordGenerator
             if (documentModel.Application == "Sales Force App")
             {
                 var allShots = documentModel.ServerEvidences
-                    .SelectMany(s => s.Screenshots)
-                    .OrderBy(s => 
-                    {
-                        var match = System.Text.RegularExpressions.Regex.Match(s.FileName ?? "", @"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?!\d)");
-                        return match.Success && Version.TryParse(match.Value, out var v) ? v : new Version(999,999,999,999);
-                    })
-                    .ThenBy(s => s.FileName)
+                    .OrderBy(s => s.DisplayOrder)
+                    .SelectMany(s => s.Screenshots.OrderBy(sc => sc.DisplayOrder))
                     .ToList();
                 
                 foreach (var shot in allShots)

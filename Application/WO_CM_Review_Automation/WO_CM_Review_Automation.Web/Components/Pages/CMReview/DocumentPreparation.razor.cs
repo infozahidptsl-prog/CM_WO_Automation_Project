@@ -438,6 +438,26 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         StateHasChanged();
     }
 
+    private void MoveServer(ServerEvidenceViewModel server, int direction)
+    {
+        var currentIndex = DocumentModel.ServerEvidences.IndexOf(server);
+        if (currentIndex < 0) return;
+
+        var newIndex = currentIndex + direction;
+        if (newIndex < 0 || newIndex >= DocumentModel.ServerEvidences.Count) return;
+
+        DocumentModel.ServerEvidences.RemoveAt(currentIndex);
+        DocumentModel.ServerEvidences.Insert(newIndex, server);
+
+        for (int i = 0; i < DocumentModel.ServerEvidences.Count; i++)
+        {
+            DocumentModel.ServerEvidences[i].DisplayOrder = i;
+        }
+
+        _selectedServerId = server.Id;
+        StateHasChanged();
+    }
+
     private void AddServerEvidence()
     {
         AddServerAndSelect();
