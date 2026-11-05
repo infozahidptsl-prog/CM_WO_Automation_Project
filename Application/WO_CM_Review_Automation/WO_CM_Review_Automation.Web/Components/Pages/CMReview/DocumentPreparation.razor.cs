@@ -1935,6 +1935,11 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         }
     }
 
+    private void CloseWithoutSave()
+    {
+        NavigationManager.NavigateTo("/cm-reviews");
+    }
+
     private async Task SaveDraftAsync()
     {
         await SaveDraftInternalAsync();
