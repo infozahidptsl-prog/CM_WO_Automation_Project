@@ -13,6 +13,9 @@
         var hasAnyChanges = DocumentModel.ChangeCategories.Any(c => c.HasChanges) || DocumentModel.WOReportItems.Any();
         
         var hasFigure2 = DocumentModel.ExcelScreenshot != null && (!string.IsNullOrWhiteSpace(DocumentModel.ExcelScreenshot.Base64Data) || !string.IsNullOrWhiteSpace(DocumentModel.ExcelScreenshot.StorageReference));
+        var uatSectionNum = DocumentModel.ChangeCategories.Count + 1;
+        var registeredChangesSectionNum = DocumentModel.ChangeCategories.Count + 2;
+        var comparisonSummarySectionNum = DocumentModel.ChangeCategories.Count + 3;
 
 
         <!-- Header Strip: T15.02.b.1 on left, Internal on right -->
@@ -304,7 +307,7 @@
         }
 
         <!-- UAT -->
-        <div class="prep-doc-cat-title">9. UAT</div>
+        <div class="prep-doc-cat-title">@uatSectionNum. UAT</div>
         @if (string.IsNullOrWhiteSpace(DocumentModel.UATStatement))
         {
             @if (hasAnyChanges)
@@ -322,7 +325,7 @@
         }
 
         <!-- Section C -->
-        <div class="prep-doc-section-heading mt-4">10. Registered Changes, Change Management Report, @monthStr-@DocumentModel.ReportingYear.</div>
+        <div class="prep-doc-section-heading mt-4">@registeredChangesSectionNum. Registered Changes, Change Management Report, @monthStr-@DocumentModel.ReportingYear.</div>
         <div class="prep-doc-sub-heading">IT Change Orders Summary &amp; Details, @monthStr- @DocumentModel.ReportingYear</div>
         
         @if (!hasAnyChanges)
@@ -384,7 +387,7 @@
         }
 
         <!-- Comparison Summary -->
-        <div class="prep-doc-section-heading mt-4">11. Comparison Summary</div>
+        <div class="prep-doc-section-heading mt-4">@comparisonSummarySectionNum. Comparison Summary</div>
         @if (string.IsNullOrWhiteSpace(DocumentModel.ComparisonSummary))
         {
             @if (hasAnyChanges)
