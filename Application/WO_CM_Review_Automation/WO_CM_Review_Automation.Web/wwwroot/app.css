@@ -23,6 +23,23 @@ html, body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* Prevent Blazor FocusOnNavigate from rendering focus box outlines on headings */
+h1:focus,
+h2:focus,
+h3:focus,
+h4:focus,
+h5:focus,
+h6:focus,
+h1:focus-visible,
+h2:focus-visible,
+h3:focus-visible,
+h4:focus-visible,
+h5:focus-visible,
+h6:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
 #blazor-error-ui {
     background: lightyellow;
     bottom: 0;

@@ -4277,6 +4277,13 @@
     letter-spacing: -0.03em;
     color: #ffffff;
     margin: 0 0 14px 0;
+    outline: none !important;
+}
+
+.auth-showcase-heading:focus,
+.auth-showcase-heading:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
 }
 
 .auth-showcase-desc {
