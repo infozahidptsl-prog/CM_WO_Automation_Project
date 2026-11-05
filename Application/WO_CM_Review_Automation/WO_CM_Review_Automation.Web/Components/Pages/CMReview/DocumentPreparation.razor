@@ -577,6 +577,41 @@
                 </button>
             </div>
         </div>
+
+        @if (_showSiemWarningDialog)
+        {
+            <div class="prep-modal-backdrop" @onclick="OnSiemWarningOk">
+                <div class="prep-modal-dialog" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+                    <div class="prep-modal-header">
+                        <div class="prep-modal-icon-badge">
+                            <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Style="color: #d97706; font-size: 26px;" />
+                        </div>
+                        <div class="prep-modal-header-text">
+                            <h3 class="prep-modal-title">SIEM Access Log Missing</h3>
+                            <p class="prep-modal-subtitle">POS Change Management Document</p>
+                        </div>
+                    </div>
+
+                    <div class="prep-modal-body">
+                        <p>
+                            SIEM access log file is not uploaded for <strong>POS</strong>.
+                        </p>
+                        <p class="prep-modal-body-sub">
+                            Click <strong>OK</strong> to stay on this page and upload the file, or click <strong>I will upload later</strong> to proceed.
+                        </p>
+                    </div>
+
+                    <div class="prep-modal-footer">
+                        <button type="button" class="dash-btn-primary" @onclick="OnSiemWarningOk">
+                            OK
+                        </button>
+                        <button type="button" class="dash-btn-outlined" @onclick="OnSiemWarningUploadLaterAsync">
+                            I will upload later
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
     }
 </div>
 

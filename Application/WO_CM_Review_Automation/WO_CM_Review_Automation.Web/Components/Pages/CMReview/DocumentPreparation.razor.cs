@@ -47,6 +47,15 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
     public bool IsDocumentLoaded { get; set; }
     public List<string> ActiveApplications { get; set; } = new();
 
+    private bool _showSiemWarningDialog = false;
+    private enum PendingSiemAction
+    {
+        None,
+        SaveAndClose,
+        Finalize
+    }
+    private PendingSiemAction _pendingSiemAction = PendingSiemAction.None;
+
     [Parameter]
     public Guid? DocumentId { get; set; }
 
@@ -1884,12 +1893,59 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         }
     }
 
+    private bool IsPosMissingSiem()
+    {
+        if (DocumentModel == null) return false;
+        if (!string.Equals(DocumentModel.Application, "POS", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        bool hasSiem = DocumentModel.SiemScreenshot != null &&
+            (!string.IsNullOrWhiteSpace(DocumentModel.SiemScreenshot.Base64Data) ||
+             !string.IsNullOrWhiteSpace(DocumentModel.SiemScreenshot.StorageReference));
+
+        return !hasSiem;
+    }
+
+    private void OnSiemWarningOk()
+    {
+        _showSiemWarningDialog = false;
+        _pendingSiemAction = PendingSiemAction.None;
+    }
+
+    private async Task OnSiemWarningUploadLaterAsync()
+    {
+        _showSiemWarningDialog = false;
+        var action = _pendingSiemAction;
+        _pendingSiemAction = PendingSiemAction.None;
+
+        if (action == PendingSiemAction.SaveAndClose)
+        {
+            await ExecuteSaveAndCloseAsync();
+        }
+        else if (action == PendingSiemAction.Finalize)
+        {
+            await ExecuteFinalizeDocumentAsync();
+        }
+    }
+
     private async Task SaveDraftAsync()
     {
         await SaveDraftInternalAsync();
     }
 
     private async Task SaveAndCloseAsync()
+    {
+        if (IsPosMissingSiem())
+        {
+            _pendingSiemAction = PendingSiemAction.SaveAndClose;
+            _showSiemWarningDialog = true;
+            return;
+        }
+
+        await ExecuteSaveAndCloseAsync();
+    }
+
+    private async Task ExecuteSaveAndCloseAsync()
     {
         var success = await SaveDraftInternalAsync();
         if (success)
@@ -2152,6 +2208,24 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
 
     private async Task FinalizeDocumentAsync()
     {
+        if (IsPosMissingSiem())
+        {
+            _pendingSiemAction = PendingSiemAction.Finalize;
+            _showSiemWarningDialog = true;
+            return;
+        }
+
+        await ExecuteFinalizeDocumentAsync();
+    }
+
+    private async Task ExecuteFinalizeDocumentAsync()
+    {
+        var saveSuccess = await SaveDraftInternalAsync();
+        if (!saveSuccess)
+        {
+            return;
+        }
+
         IsLoading = true;
         try
         {

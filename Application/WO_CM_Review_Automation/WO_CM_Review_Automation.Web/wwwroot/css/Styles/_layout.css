@@ -5821,3 +5821,112 @@
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
+
+/* SIEM Warning Modal for POS */
+.prep-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(15, 23, 42, 0.48);
+    backdrop-filter: blur(4px);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: prepModalFadeIn 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes prepModalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.prep-modal-dialog {
+    background: var(--color-bg-surface, #ffffff);
+    border-radius: 14px;
+    border: 1px solid var(--color-border-subtle, rgba(0, 0, 0, 0.08));
+    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    width: 100%;
+    max-width: 460px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: prepModalScaleIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes prepModalScaleIn {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.prep-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 24px 14px 24px;
+}
+
+.prep-modal-icon-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background-color: #fffbeb;
+    border: 1px solid #fef3c7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.prep-modal-header-text {
+    flex: 1;
+}
+
+.prep-modal-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--color-text-primary, #0f172a);
+    line-height: 1.3;
+}
+
+.prep-modal-subtitle {
+    margin: 3px 0 0 0;
+    font-size: 0.78rem;
+    color: var(--color-text-secondary, #64748b);
+    font-weight: 500;
+}
+
+.prep-modal-body {
+    padding: 4px 24px 20px 24px;
+    color: var(--color-text-primary, #334155);
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+
+.prep-modal-body p {
+    margin: 0 0 8px 0;
+}
+
+.prep-modal-body p:last-child {
+    margin-bottom: 0;
+}
+
+.prep-modal-body-sub {
+    font-size: 0.82rem;
+    color: var(--color-text-secondary, #64748b);
+}
+
+.prep-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 24px;
+    background-color: var(--color-bg-surface-secondary, #f8fafc);
+    border-top: 1px solid var(--color-border-subtle, #e2e8f0);
+}
+
