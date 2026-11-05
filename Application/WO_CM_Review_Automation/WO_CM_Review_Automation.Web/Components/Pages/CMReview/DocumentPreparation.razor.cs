@@ -1838,7 +1838,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         DocumentModel.ExcelScreenshot = null;
     }
 
-    private async Task SaveDraftAsync()
+    private async Task<bool> SaveDraftInternalAsync()
     {
         IsLoading = true;
         try
@@ -1869,15 +1869,32 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
                 }
 
                 Snackbar.Add("Draft saved", Severity.Success);
+                return true;
             }
+            return false;
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Error saving draft: {ex.Message}", Severity.Error);
+            return false;
         }
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        await SaveDraftInternalAsync();
+    }
+
+    private async Task SaveAndCloseAsync()
+    {
+        var success = await SaveDraftInternalAsync();
+        if (success)
+        {
+            NavigationManager.NavigateTo("/cm-reviews");
         }
     }
 
