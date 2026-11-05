@@ -140,7 +140,7 @@ public class CMReviewDocumentService : ICMReviewDocumentService
         var newDoc = await CreateDocumentAsync(application, currentYear, currentMonth);
 
         // Copy Server structures
-        foreach(var server in prevDoc.ServerEvidences)
+        foreach(var server in prevDoc.ServerEvidences.OrderBy(s => s.DisplayOrder))
         {
             newDoc.ServerEvidences.Add(new CMReviewServerEvidence
             {
@@ -153,7 +153,7 @@ public class CMReviewDocumentService : ICMReviewDocumentService
         }
 
         // Copy Categories
-        foreach(var cat in prevDoc.ChangeCategories)
+        foreach(var cat in prevDoc.ChangeCategories.OrderBy(c => c.DisplayOrder))
         {
             newDoc.ChangeCategories.Add(new CMReviewChangeCategory
             {

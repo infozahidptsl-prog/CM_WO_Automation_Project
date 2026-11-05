@@ -430,7 +430,10 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
 
     private void AddServerAndSelect()
     {
-        var newServer = new ServerEvidenceViewModel();
+        var newServer = new ServerEvidenceViewModel
+        {
+            DisplayOrder = DocumentModel.ServerEvidences.Count
+        };
         DocumentModel.ServerEvidences.Add(newServer);
         _selectedServerId = newServer.Id;
         _pendingClipboardInit = true;
@@ -1967,6 +1970,12 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
 
         try
         {
+            // Ensure server DisplayOrder strictly matches current list order
+            for (int i = 0; i < DocumentModel.ServerEvidences.Count; i++)
+            {
+                DocumentModel.ServerEvidences[i].DisplayOrder = i;
+            }
+
             // Server Evidences
             var serverIds = DocumentModel.ServerEvidences.Select(s => s.Id).ToList();
             var serversToRemove = dbDoc.ServerEvidences.Where(s => !serverIds.Contains(s.Id)).ToList();
@@ -2255,23 +2264,30 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         DocumentModel.TemplateVersion = dbDoc.TemplateVersion;
         DocumentModel.Status = dbDoc.Status;
 
-        DocumentModel.ServerEvidences = dbDoc.ServerEvidences.Select(s => new ServerEvidenceViewModel
-        {
-            Id = s.Id,
-            ServerIp = s.ServerIp,
-            ServerName = s.ServerName,
-            DisplayOrder = s.DisplayOrder,
-            Remarks = s.Remarks,
-            Screenshots = s.Screenshots != null ? s.Screenshots.Select(sc => new ScreenshotViewModel
+        DocumentModel.ServerEvidences = dbDoc.ServerEvidences
+            .OrderBy(s => s.DisplayOrder)
+            .Select(s => new ServerEvidenceViewModel
             {
-                Id = sc.Id,
-                StorageReference = sc.StorageReference,
-                Caption = sc.Caption,
-                DisplayOrder = sc.DisplayOrder,
-                ContentType = sc.ContentType,
-                FileName = sc.FileName
-            }).ToList() : new List<ScreenshotViewModel>()
-        }).ToList();
+                Id = s.Id,
+                ServerIp = s.ServerIp,
+                ServerName = s.ServerName,
+                DisplayOrder = s.DisplayOrder,
+                Remarks = s.Remarks,
+                Screenshots = s.Screenshots != null ? s.Screenshots.OrderBy(sc => sc.DisplayOrder).Select(sc => new ScreenshotViewModel
+                {
+                    Id = sc.Id,
+                    StorageReference = sc.StorageReference,
+                    Caption = sc.Caption,
+                    DisplayOrder = sc.DisplayOrder,
+                    ContentType = sc.ContentType,
+                    FileName = sc.FileName
+                }).ToList() : new List<ScreenshotViewModel>()
+            }).ToList();
+
+        for (int i = 0; i < DocumentModel.ServerEvidences.Count; i++)
+        {
+            DocumentModel.ServerEvidences[i].DisplayOrder = i;
+        }
 
         if (_selectedServerId == null || !DocumentModel.ServerEvidences.Any(s => s.Id == _selectedServerId))
         {
@@ -2320,32 +2336,34 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         DocumentModel.ComparisonSummary = dbDoc.ComparisonSummary;
         DocumentModel.UATStatement = dbDoc.UATStatement;
 
-        DocumentModel.ChangeCategories = dbDoc.ChangeCategories.Select(c => new ChangeCategoryViewModel
-        {
-            Id = c.Id,
-            CategoryName = c.CategoryName,
-            HasChanges = c.HasChanges,
-            DisplayOrder = c.DisplayOrder,
-            ChangeDetails = c.ChangeDetails.Select(d => new ChangeDetailViewModel
+        DocumentModel.ChangeCategories = dbDoc.ChangeCategories
+            .OrderBy(c => c.DisplayOrder)
+            .Select(c => new ChangeCategoryViewModel
             {
-                Id = d.Id,
-                ChangeOrder = d.ChangeOrder,
-                ChangeType = d.ChangeType,
-                Description = d.Description,
-                ScheduleDate = d.ScheduleDate,
-                ServerInfo = d.ServerInfo,
-                Remarks = d.Remarks,
-                DeploymentScreenshots = d.DeploymentScreenshots != null ? d.DeploymentScreenshots.Select(s => new ScreenshotViewModel
+                Id = c.Id,
+                CategoryName = c.CategoryName,
+                HasChanges = c.HasChanges,
+                DisplayOrder = c.DisplayOrder,
+                ChangeDetails = c.ChangeDetails != null ? c.ChangeDetails.OrderBy(d => d.ChangeOrder).Select(d => new ChangeDetailViewModel
                 {
-                    Id = s.Id,
-                    StorageReference = s.StorageReference,
-                    Caption = s.Caption,
-                    DisplayOrder = s.DisplayOrder,
-                    ContentType = s.ContentType,
-                    FileName = s.FileName
-                }).ToList() : new List<ScreenshotViewModel>()
-            }).ToList()
-        }).ToList();
+                    Id = d.Id,
+                    ChangeOrder = d.ChangeOrder,
+                    ChangeType = d.ChangeType,
+                    Description = d.Description,
+                    ScheduleDate = d.ScheduleDate,
+                    ServerInfo = d.ServerInfo,
+                    Remarks = d.Remarks,
+                    DeploymentScreenshots = d.DeploymentScreenshots != null ? d.DeploymentScreenshots.OrderBy(s => s.DisplayOrder).Select(s => new ScreenshotViewModel
+                    {
+                        Id = s.Id,
+                        StorageReference = s.StorageReference,
+                        Caption = s.Caption,
+                        DisplayOrder = s.DisplayOrder,
+                        ContentType = s.ContentType,
+                        FileName = s.FileName
+                    }).ToList() : new List<ScreenshotViewModel>()
+                }).ToList() : new List<ChangeDetailViewModel>()
+            }).ToList();
 
         // Fallback for old drafts that have 0 categories
         if (!DocumentModel.ChangeCategories.Any())
