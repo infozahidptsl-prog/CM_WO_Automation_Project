@@ -2,7 +2,6 @@
 @page "/cm-review/document-preparation/{DocumentId:guid}"
 @using WO_CM_Review_Automation.Application.ViewModels.CMReview
 @using WO_CM_Review_Automation.Domain.Entities.CMReview
-@inject WO_CM_Review_Automation.Application.Mappings.Interfaces.IMappingService MappingService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Prepare document - WO CM Review</PageTitle>
@@ -272,11 +271,23 @@
                         </button>
                     </div>
 
-                    @{
-                        var activeServer = DocumentModel.ServerEvidences.FirstOrDefault(s => s.Id == _selectedServerId);
-                    }
-                    @if (activeServer != null)
+                    @if (!DocumentModel.ServerEvidences.Any())
                     {
+                        <div class="prep-server-empty-state" @onclick="AddServerAndSelect">
+                            <MudIcon Icon="@Icons.Material.Outlined.Dns" Style="font-size: 24px; color: #2563eb; margin-bottom: 4px;" />
+                            <div class="prep-server-empty-title">No server evidence added yet</div>
+                            <div class="prep-server-empty-sub">Click here or "+ Add server" to configure server IP, host, and upload or paste screenshots.</div>
+                        </div>
+                    }
+                    else
+                    {
+                        var activeServer = DocumentModel.ServerEvidences.FirstOrDefault(s => s.Id == _selectedServerId)
+                                           ?? DocumentModel.ServerEvidences.First();
+                        if (_selectedServerId != activeServer.Id)
+                        {
+                            _selectedServerId = activeServer.Id;
+                        }
+
                         <div class="prep-server-editor-card">
                             <div class="prep-server-inputs">
                                 <div class="prep-field">
@@ -289,17 +300,27 @@
                                 </div>
                             </div>
 
-                            <div id="@($"paste-area-{activeServer.Id}")"
-                                 tabindex="0"
-                                 contenteditable="true"
-                                 onkeydown="return false;"
-                                 class="prep-mini-paste-zone mt-2"
-                                 @onfocus="@(async () => await InitializeClipboardAsync(activeServer.Id))">
-                                <span>Click here &amp; press <strong>Ctrl+V</strong> to paste server screenshot (auto-OCR IP) or</span>
-                                <label class="prep-browse-inline" @onclick:stopPropagation="true">
-                                    browse images
-                                    <InputFile accept=".png, .jpg, .jpeg" multiple OnChange="@(e => UploadScreenshotsAsync(e, activeServer.Id))" style="display: none;" />
+                            <div class="prep-server-upload-actions">
+                                <InputFile id="@($"file-upload-server-{activeServer.Id}")"
+                                           accept=".png, .jpg, .jpeg"
+                                           multiple
+                                           OnChange="@(e => UploadScreenshotsAsync(e, activeServer.Id))"
+                                           style="display: none;" />
+                                
+                                <label for="@($"file-upload-server-{activeServer.Id}")" class="prep-server-browse-btn" title="Choose server screenshots from your computer">
+                                    <MudIcon Icon="@Icons.Material.Outlined.CloudUpload" Style="font-size: 15px; margin-right: 6px;" />
+                                    <span>Browse screenshots</span>
                                 </label>
+
+                                <div id="@($"paste-area-{activeServer.Id}")"
+                                     tabindex="0"
+                                     contenteditable="true"
+                                     onkeydown="return false;"
+                                     class="prep-mini-paste-zone"
+                                     @onfocus="@(async () => await InitializeClipboardAsync(activeServer.Id))">
+                                    <MudIcon Icon="@Icons.Material.Outlined.ContentPaste" Style="font-size: 13px; margin-right: 4px; vertical-align: middle;" />
+                                    <span>Or click here &amp; press <strong>Ctrl+V</strong> to paste (auto-OCR IP)</span>
+                                </div>
                             </div>
 
                             @if (activeServer.Screenshots.Any())
@@ -308,9 +329,9 @@
                                     @foreach (var shot in activeServer.Screenshots)
                                     {
                                         <div class="prep-thumb-card">
-                                            <img src="@(shot.Base64Data ?? $"/{shot.StorageReference}")" alt="Server" class="prep-thumb-img" />
-                                            <input type="text" @bind="shot.Caption" placeholder="Caption" class="prep-thumb-caption" />
-                                            <button type="button" class="prep-thumb-del" @onclick="@(() => RemoveScreenshot(activeServer, shot))">×</button>
+                                            <img src="@(shot.Base64Data ?? $"/{shot.StorageReference}")" alt="Server screenshot" class="prep-thumb-img" />
+                                            <input type="text" @bind="shot.Caption" placeholder="Caption (e.g. Hostname/IP)" class="prep-thumb-caption" />
+                                            <button type="button" class="prep-thumb-del" @onclick="@(() => RemoveScreenshot(activeServer, shot))" title="Remove screenshot">×</button>
                                         </div>
                                     }
                                 </div>
@@ -337,12 +358,10 @@
                                  @onfocus="@(async () => await InitializeSummaryClipboardAsync())">
                                 <MudIcon Icon="@Icons.Material.Outlined.AddPhotoAlternate" Style="font-size: 18px; color: var(--color-text-muted); margin-bottom: 6px;" />
                                 <div class="prep-evidence-title">WOs for CM review · Figure 1</div>
-                                <div class="prep-evidence-sub" @onclick:stopPropagation="true">
+                                <div class="prep-evidence-sub">
                                     Paste with Ctrl+V or
-                                    <label class="prep-browse-inline">
-                                        browse
-                                        <InputFile accept=".png, .jpg, .jpeg" OnChange="@(e => UploadSummaryScreenshotAsync(e))" style="display: none;" />
-                                    </label>
+                                    <InputFile id="summary-file-input" accept=".png, .jpg, .jpeg" OnChange="@(e => UploadSummaryScreenshotAsync(e))" style="display: none;" />
+                                    <label for="summary-file-input" class="prep-browse-inline">browse</label>
                                 </div>
                                 @if (DocumentModel.SummaryTableScreenshot != null)
                                 {
@@ -375,12 +394,10 @@
                                  @onfocus="@(async () => await InitializeExcelClipboardAsync())">
                                 <MudIcon Icon="@Icons.Material.Outlined.AddPhotoAlternate" Style="font-size: 18px; color: var(--color-text-muted); margin-bottom: 6px;" />
                                 <div class="prep-evidence-title">Filtered Excel · Figure 2</div>
-                                <div class="prep-evidence-sub" @onclick:stopPropagation="true">
+                                <div class="prep-evidence-sub">
                                     Paste with Ctrl+V or
-                                    <label class="prep-browse-inline">
-                                        browse
-                                        <InputFile accept=".png, .jpg, .jpeg, .docx" OnChange="@(e => UploadExcelScreenshotAsync(e))" style="display: none;" />
-                                    </label>
+                                    <InputFile id="excel-file-input" accept=".png, .jpg, .jpeg, .docx" OnChange="@(e => UploadExcelScreenshotAsync(e))" style="display: none;" />
+                                    <label for="excel-file-input" class="prep-browse-inline">browse</label>
                                 </div>
                                 @if (currentAppHasChanges && DocumentModel.ExcelScreenshot != null)
                                 {
@@ -514,58 +531,4 @@
 </div>
 
 @code {
-    private Guid? _selectedServerId;
-
-    private string GetMonthName(int month)
-    {
-        if (month < 1 || month > 12) return month.ToString();
-        return System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(month);
-    }
-
-    private void ToggleCategoryHasChanges(ChangeCategoryViewModel cat, bool val)
-    {
-        cat.HasChanges = val;
-        if (val && !cat.ChangeDetails.Any())
-        {
-            cat.ChangeDetails.Add(new ChangeDetailViewModel());
-        }
-    }
-
-    private static string FormatWoInput(string? rawOrder)
-    {
-        if (string.IsNullOrWhiteSpace(rawOrder)) return string.Empty;
-        return System.Text.RegularExpressions.Regex.Replace(rawOrder, @"^WO[\s\-_]*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
-    }
-
-    private static void UpdateChangeOrder(ChangeDetailViewModel detail, string? val)
-    {
-        if (string.IsNullOrWhiteSpace(val))
-        {
-            detail.ChangeOrder = string.Empty;
-            return;
-        }
-        var trimmed = val.Trim();
-        detail.ChangeOrder = trimmed.StartsWith("WO ", StringComparison.OrdinalIgnoreCase) ? trimmed : $"WO {trimmed}";
-    }
-
-    private void SelectServer(Guid serverId)
-    {
-        _selectedServerId = _selectedServerId == serverId ? null : serverId;
-    }
-
-    private void AddServerAndSelect()
-    {
-        var newServer = new ServerEvidenceViewModel();
-        DocumentModel.ServerEvidences.Add(newServer);
-        _selectedServerId = newServer.Id;
-    }
-
-    private void RemoveServerAndAdjustSelection(ServerEvidenceViewModel server)
-    {
-        RemoveServerEvidence(server);
-        if (_selectedServerId == server.Id)
-        {
-            _selectedServerId = DocumentModel.ServerEvidences.FirstOrDefault()?.Id;
-        }
-    }
 }

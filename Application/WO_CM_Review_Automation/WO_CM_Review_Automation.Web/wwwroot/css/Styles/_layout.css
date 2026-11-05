@@ -2979,6 +2979,67 @@
     border-color: #2563eb;
 }
 
+.prep-server-empty-state {
+    margin-top: 10px;
+    padding: 20px 16px;
+    background-color: var(--color-bg-surface);
+    border: 1px dashed var(--color-border-standard);
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.prep-server-empty-state:hover {
+    border-color: #2563eb;
+    background-color: rgba(37, 99, 235, 0.02);
+}
+
+.prep-server-empty-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.prep-server-empty-sub {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-top: 4px;
+}
+
+.prep-server-upload-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.prep-server-browse-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background-color: #2563eb;
+    color: #ffffff !important;
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 120ms ease;
+    user-select: none;
+    margin-bottom: 0;
+}
+
+.prep-server-browse-btn:hover {
+    background-color: #1d4ed8;
+}
+
+.prep-server-upload-actions .prep-mini-paste-zone {
+    flex: 1;
+    margin-top: 0;
+    padding: 6px 10px;
+}
+
 .prep-browse-inline {
     color: #2563eb;
     font-weight: 500;

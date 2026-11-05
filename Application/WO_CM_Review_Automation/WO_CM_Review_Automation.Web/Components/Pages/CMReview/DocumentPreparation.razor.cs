@@ -70,9 +70,13 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         {
             if (IsDocumentLoaded) return;
 
+            using var scope = ServiceScopeFactory.CreateScope();
+            var mapService = scope.ServiceProvider.GetRequiredService<WO_CM_Review_Automation.Application.Mappings.Interfaces.IMappingService>();
+            var docService = scope.ServiceProvider.GetRequiredService<ICMReviewDocumentService>();
+
             if (!ActiveApplications.Any())
             {
-                var mappings = await MappingService.GetApplicationMappingsAsync();
+                var mappings = await mapService.GetApplicationMappingsAsync();
                 ActiveApplications = mappings
                     .Where(m => m.IsActive)
                     .OrderBy(m => m.DisplayOrder)
@@ -88,7 +92,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
 
             if (DocumentId.HasValue)
             {
-                var dbDoc = await DocumentService.GetDocumentAsync(DocumentId.Value);
+                var dbDoc = await docService.GetDocumentAsync(DocumentId.Value);
                 if (dbDoc != null)
                 {
                     DocumentModel.Application = dbDoc.Application;
@@ -185,19 +189,24 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         IsLoading = true;
         try
         {
-            var dbDoc = await DocumentService.GetDocumentByPeriodAsync(DocumentModel.Application, DocumentModel.ReportingYear, DocumentModel.ReportingMonth);
+            using var scope = ServiceScopeFactory.CreateScope();
+            var docService = scope.ServiceProvider.GetRequiredService<ICMReviewDocumentService>();
+            var woService = scope.ServiceProvider.GetRequiredService<ICMReviewWOReportService>();
+            var mapService = scope.ServiceProvider.GetRequiredService<WO_CM_Review_Automation.Application.Mappings.Interfaces.IMappingService>();
+
+            var dbDoc = await docService.GetDocumentByPeriodAsync(DocumentModel.Application, DocumentModel.ReportingYear, DocumentModel.ReportingMonth);
             
             if (dbDoc == null)
             {
                 // Create new
-                dbDoc = await DocumentService.CreateDocumentAsync(DocumentModel.Application, DocumentModel.ReportingYear, DocumentModel.ReportingMonth);
+                dbDoc = await docService.CreateDocumentAsync(DocumentModel.Application, DocumentModel.ReportingYear, DocumentModel.ReportingMonth);
             }
 
             // Map DB entity to ViewModel
             MapToViewModel(dbDoc);
 
             // Reload WO Report items based on shared filter
-            var reportItems = await WOReportService.GenerateWOReportItemsAsync(dbDoc.Id, DocumentModel.Application, DocumentModel.ReportingYear, DocumentModel.ReportingMonth);
+            var reportItems = await woService.GenerateWOReportItemsAsync(dbDoc.Id, DocumentModel.Application, DocumentModel.ReportingYear, DocumentModel.ReportingMonth);
             
             DocumentModel.WOReportItems = reportItems.Select(r => new WOReportItemViewModel
             {
@@ -284,7 +293,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
                 }
                 
                 // Load dynamic routing rules
-                var allMappings = await MappingService.GetChangeCategoryMappingsAsync();
+                var allMappings = await mapService.GetChangeCategoryMappingsAsync();
                 var appMappings = allMappings
                     .Where(m => m.ApplicationName.Equals(DocumentModel.Application, StringComparison.OrdinalIgnoreCase) && m.IsActive)
                     .ToList();
@@ -371,9 +380,67 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         StateHasChanged();
     }
 
+    private Guid? _selectedServerId;
+
+    private string GetMonthName(int month)
+    {
+        if (month < 1 || month > 12) return month.ToString();
+        return System.Globalization.DateTimeFormatInfo.InvariantInfo.GetMonthName(month);
+    }
+
+    private void ToggleCategoryHasChanges(ChangeCategoryViewModel cat, bool val)
+    {
+        cat.HasChanges = val;
+        if (val && !cat.ChangeDetails.Any())
+        {
+            cat.ChangeDetails.Add(new ChangeDetailViewModel());
+        }
+    }
+
+    private static string FormatWoInput(string? rawOrder)
+    {
+        if (string.IsNullOrWhiteSpace(rawOrder)) return string.Empty;
+        return System.Text.RegularExpressions.Regex.Replace(rawOrder, @"^WO[\s\-_]*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+    }
+
+    private static void UpdateChangeOrder(ChangeDetailViewModel detail, string? val)
+    {
+        if (string.IsNullOrWhiteSpace(val))
+        {
+            detail.ChangeOrder = string.Empty;
+            return;
+        }
+        var trimmed = val.Trim();
+        detail.ChangeOrder = trimmed.StartsWith("WO ", StringComparison.OrdinalIgnoreCase) ? trimmed : $"WO {trimmed}";
+    }
+
+    private void SelectServer(Guid serverId)
+    {
+        _selectedServerId = _selectedServerId == serverId ? null : serverId;
+    }
+
+    private void AddServerAndSelect()
+    {
+        var newServer = new ServerEvidenceViewModel();
+        DocumentModel.ServerEvidences.Add(newServer);
+        _selectedServerId = newServer.Id;
+        _pendingClipboardInit = true;
+        StateHasChanged();
+    }
+
+    private void RemoveServerAndAdjustSelection(ServerEvidenceViewModel server)
+    {
+        RemoveServerEvidence(server);
+        if (_selectedServerId == server.Id)
+        {
+            _selectedServerId = DocumentModel.ServerEvidences.FirstOrDefault()?.Id;
+        }
+        StateHasChanged();
+    }
+
     private void AddServerEvidence()
     {
-        DocumentModel.ServerEvidences.Add(new ServerEvidenceViewModel());
+        AddServerAndSelect();
     }
 
     private void RemoveServerEvidence(ServerEvidenceViewModel server)
@@ -1756,11 +1823,13 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         IsLoading = true;
         try
         {
-            var dbDoc = await DocumentService.GetDocumentAsync(DocumentModel.Id);
+            using var scope = ServiceScopeFactory.CreateScope();
+            var docService = scope.ServiceProvider.GetRequiredService<ICMReviewDocumentService>();
+            var dbDoc = await docService.GetDocumentAsync(DocumentModel.Id);
             if(dbDoc != null)
             {
-                await MapToEntityAsync(dbDoc);
-                await DocumentService.SaveDraftAsync(dbDoc);
+                await MapToEntityAsync(dbDoc, docService);
+                await docService.SaveDraftAsync(dbDoc);
 
                 // Clear transient data only after successful save
                 foreach (var serverVm in DocumentModel.ServerEvidences)
@@ -1792,7 +1861,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         }
     }
 
-    private async Task MapToEntityAsync(CMReviewDocument dbDoc)
+    private async Task MapToEntityAsync(CMReviewDocument dbDoc, ICMReviewDocumentService docService)
     {
         dbDoc.DocumentVersion = DocumentModel.DocumentVersion;
         dbDoc.TemplateVersion = DocumentModel.TemplateVersion;
@@ -1816,7 +1885,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
                 if (serverEntity == null)
                 {
                     serverEntity = new CMReviewServerEvidence { Id = serverVm.Id, Screenshots = new List<CMReviewScreenshot>() };
-                    DocumentService.MarkNewEntityAsAdded(serverEntity);
+                    docService.MarkNewEntityAsAdded(serverEntity);
                     dbDoc.ServerEvidences.Add(serverEntity);
                 }
 
@@ -1850,7 +1919,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
                     if (shotEntity == null)
                     {
                         shotEntity = new CMReviewScreenshot { Id = shotVm.Id };
-                        DocumentService.MarkNewEntityAsAdded(shotEntity);
+                        docService.MarkNewEntityAsAdded(shotEntity);
                         serverEntity.Screenshots.Add(shotEntity);
                     }
 
@@ -1935,7 +2004,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
                 if (catEntity == null)
                 {
                     catEntity = new CMReviewChangeCategory { Id = catVm.Id, ChangeDetails = new List<CMReviewChangeDetail>() };
-                    DocumentService.MarkNewEntityAsAdded(catEntity);
+                    docService.MarkNewEntityAsAdded(catEntity);
                     dbDoc.ChangeCategories.Add(catEntity);
                 }
 
@@ -1954,7 +2023,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
                     if (detailEntity == null)
                     {
                         detailEntity = new CMReviewChangeDetail { Id = detailVm.Id, DeploymentScreenshots = new List<CMReviewScreenshot>() };
-                        DocumentService.MarkNewEntityAsAdded(detailEntity);
+                        docService.MarkNewEntityAsAdded(detailEntity);
                         catEntity.ChangeDetails.Add(detailEntity);
                     }
 
@@ -1988,7 +2057,7 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
                         if (shotEntity == null)
                         {
                             shotEntity = new CMReviewScreenshot { Id = shotVm.Id };
-                            DocumentService.MarkNewEntityAsAdded(shotEntity);
+                            docService.MarkNewEntityAsAdded(shotEntity);
                             detailEntity.DeploymentScreenshots.Add(shotEntity);
                         }
 
@@ -2049,7 +2118,9 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
         IsLoading = true;
         try
         {
-            await DocumentService.FinalizeDocumentAsync(DocumentModel.Id, "SystemUser");
+            using var scope = ServiceScopeFactory.CreateScope();
+            var docService = scope.ServiceProvider.GetRequiredService<ICMReviewDocumentService>();
+            await docService.FinalizeDocumentAsync(DocumentModel.Id, "SystemUser");
             DocumentModel.Status = CMReviewDocumentStatus.Finalized;
             Snackbar.Add("Document finalized", Severity.Success);
         }
@@ -2079,8 +2150,22 @@ public partial class DocumentPreparation : ComponentBase, IDisposable
             ServerIp = s.ServerIp,
             ServerName = s.ServerName,
             DisplayOrder = s.DisplayOrder,
-            Remarks = s.Remarks
+            Remarks = s.Remarks,
+            Screenshots = s.Screenshots != null ? s.Screenshots.Select(sc => new ScreenshotViewModel
+            {
+                Id = sc.Id,
+                StorageReference = sc.StorageReference,
+                Caption = sc.Caption,
+                DisplayOrder = sc.DisplayOrder,
+                ContentType = sc.ContentType,
+                FileName = sc.FileName
+            }).ToList() : new List<ScreenshotViewModel>()
         }).ToList();
+
+        if (_selectedServerId == null || !DocumentModel.ServerEvidences.Any(s => s.Id == _selectedServerId))
+        {
+            _selectedServerId = DocumentModel.ServerEvidences.FirstOrDefault()?.Id;
+        }
         
         if (!string.IsNullOrWhiteSpace(dbDoc.SummaryTableStorageReference))
         {
